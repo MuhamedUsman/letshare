@@ -1,2 +1,2 @@
 # letshare
-Letshare - Application to share files on the same WiFi network
+Letshare - A TUI to share files on the same Wi-Fi network
