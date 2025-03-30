@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"github.com/MuhamedUsman/letshare/internal/common"
+	"github.com/MuhamedUsman/letshare/internal/utility"
 	"github.com/grandcat/zeroconf"
 	"io"
 	"net/http"
@@ -19,7 +19,7 @@ func TestCopyFilesToDir(t *testing.T) {
 	tempDir := t.TempDir()
 	files := createTempFiles(t, 3, tempDir)
 	s := &Server{
-		BT: common.NewBackgroundTask(),
+		BT: utility.NewBackgroundTask(),
 	}
 	var ch CopyStatChan
 	t.Log("Copying files to temp dir", "files", len(files), "tempDir", tempDir)
@@ -39,7 +39,7 @@ func TestCopyFilesToDir(t *testing.T) {
 func TestSrvDir(t *testing.T) {
 	tempDir := t.TempDir()
 	s := &Server{
-		BT: common.NewBackgroundTask(),
+		BT: utility.NewBackgroundTask(),
 	}
 	tempFiles := createTempFiles(t, 3, tempDir)
 	ch := s.CopyFilesToDir(tempDir, tempFiles...)
@@ -52,7 +52,7 @@ func TestSrvDir(t *testing.T) {
 			t.Fatal(stat.Err.Error())
 		}
 	}
-	server := httptest.NewServer(s.createSrvDirHandler(tempDir))
+	server := httptest.NewServer(s.routes(tempDir))
 	defer server.Close()
 	resp, err := http.Get(server.URL)
 	if err != nil {

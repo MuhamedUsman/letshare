@@ -2,16 +2,23 @@ package main
 
 import (
 	"context"
-	"github.com/MuhamedUsman/letshare/internal/common"
 	"github.com/MuhamedUsman/letshare/internal/server"
+	"github.com/MuhamedUsman/letshare/internal/utility"
+	"log/slog"
+	"os"
 )
 
 func main() {
-	s := server.Server{
-		BT: common.NewBackgroundTask(),
-	}
+	utility.ConfigureSlog(os.Stderr)
+	s := server.New()
+
+	// Publishing DNS Entry
 	s.BT.Run(func(shutdownCtx context.Context) {
-		server.PublishEntry(shutdownCtx, "Letshare", "Sharing Files")
+		instance := "Letshare"
+		slog.Info("Publishing Multicast DNS Entry", "instance", instance)
+		if err := server.PublishEntry(shutdownCtx, instance, "Sharing Files"); err != nil {
+			slog.Error(err.Error())
+		}
 	})
-	s.SrvDir("C:/Users/usman/Downloads/Programs")
+	s.StartServerForDir("C:/Users/usman/Downloads/Programs")
 }
