@@ -2,7 +2,11 @@ module github.com/MuhamedUsman/letshare
 
 go 1.24.1
 
-require github.com/grandcat/zeroconf v1.0.0
+require (
+	github.com/grandcat/zeroconf v1.0.0
+	github.com/justinas/alice v1.2.0
+	github.com/lmittmann/tint v1.0.7
+)
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect

@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/common"
+	"github.com/MuhamedUsman/letshare/internal/utility"
 	"github.com/grandcat/zeroconf"
+	"github.com/justinas/alice"
 	"io"
 	"log"
 	"log/slog"
@@ -13,9 +15,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -27,7 +32,21 @@ type Server struct {
 	// Cancel func for StopCtx
 	StopCancel context.CancelFunc
 	// Every Goroutine must run through BT Run function
-	BT *common.BackgroundTask
+	BT *utility.BackgroundTask
+	mu *sync.Mutex
+	// indicates if the server is idling or currently serving files
+	ActiveDowns int
+}
+
+func New() *Server {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Server{
+		BT:         utility.NewBackgroundTask(),
+		StopCtx:    ctx,
+		StopCancel: cancel,
+		mu:         new(sync.Mutex),
+		Stoppable:  true,
+	}
 }
 
 type CopyStat struct {
@@ -113,8 +132,28 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// SrvDir returns a http.handlerFunc serving the dir passed as parameter
-func (s *Server) SrvDir(dir string) {
+// StartServerForDir starts an HTTP server that serves files from the specified directory.
+// It binds to the machine's outbound IP address on port 80 and handles graceful shutdown
+// on context cancellation or OS termination signals (SIGINT, SIGTERM).
+//
+// The function sets up proper timeouts for read operations and idle connections.
+// The server routes are configured through the Server.routes method which should
+// handle serving files from the provided directory.
+//
+// Parameters:
+//   - dir: The directory path to serve files from. Must be a valid directory.
+//
+// Returns:
+//   - error: An error if the server fails to start, encounters issues during shutdown,
+//     or if background tasks cannot be properly terminated.
+//
+// Panics:
+//   - If the provided 'dir' path exists but is not a directory.
+//
+// Note:
+//   - Uses GetOutboundIP() to determine the IP address for binding.
+//   - Will wait up to 5 seconds for server shutdown & 5 seconds for background tasks.
+func (s *Server) StartServerForDir(dir string) error {
 	if info, _ := os.Stat(dir); info != nil && !info.IsDir() {
 		panic(fmt.Sprintf("%q is not a directory", dir))
 	}
@@ -127,15 +166,41 @@ func (s *Server) SrvDir(dir string) {
 		ReadTimeout:       4 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		IdleTimeout:       10 * time.Second,
-		Handler:           s.createSrvDirHandler(dir),
+		Handler:           s.routes(dir),
 	}
-	err = server.ListenAndServe()
-	log.Fatal(err)
+	errChan := make(chan error)
+	go func() {
+		defer close(errChan)
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-s.StopCtx.Done():
+		case <-quit:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err = server.Shutdown(ctx); err != nil {
+			errChan <- fmt.Errorf("shutting down server: %v", err)
+		}
+	}()
+	slog.Info("Starting Server", "address", server.Addr)
+	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("server listning on address %q", server.Addr)
+	}
+	if err = <-errChan; err != nil {
+		return fmt.Errorf("server shutting down: %v", err)
+	}
+	if err = s.BT.Shutdown(5 * time.Second); err != nil {
+		return fmt.Errorf("shutting down background tasks: %v", err)
+	}
+	return nil
 }
 
-func (s *Server) createSrvDirHandler(dir string) http.Handler {
+func (s *Server) routes(dir string) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /", s.JsonFileServer(dir))
+	panicRecover := alice.New(s.recoverPanic)
+	mux.Handle("GET /", panicRecover.Then(s.JsonFileServer(dir)))
+	mux.Handle("GET /stop", panicRecover.ThenFunc(s.Stop))
 	return mux
 }
 
@@ -164,6 +229,14 @@ type FSInfo struct {
 // an error response will be returned using serverErrorResponse.
 func (s *Server) JsonFileServer(dir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.ActiveDowns++
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			s.ActiveDowns--
+			s.mu.Unlock()
+		}()
 		entries, err := os.ReadDir(dir)
 		if r.URL.Path != "/" { // that means user is accessing some file
 			http.ServeFile(w, r, path.Join(dir, path.Clean(r.URL.Path)))
@@ -196,6 +269,31 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			return
 		}
 	})
+}
+
+// Stop handles HTTP requests to stop the server.
+// Only works when the server is stoppable and not actively serving files.
+//
+// Returns:
+// - Success (202 Accepted): When shutdown is initiated
+// - Error: When the server is not stoppable or is currently serving files
+func (s *Server) Stop(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	c := s.ActiveDowns
+	s.mu.Unlock()
+	if s.Stoppable && c == 0 {
+		s.StopCancel()
+		msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
+		if err := s.writeJSON(w, envelop{"message": msg}, http.StatusAccepted, nil); err != nil {
+			s.serverErrorResponse(w, r, err)
+		}
+		return
+	}
+	if !s.Stoppable {
+		s.notStoppableResponse(w, r)
+		return
+	}
+	s.notIdleResponse(w, r)
 }
 
 // GetOutboundIP gets the preferred outbound ip of this machine

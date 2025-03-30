@@ -25,47 +25,17 @@ func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err
 	s.errorResponse(w, r, http.StatusInternalServerError, message)
 }
 
-func (s *Server) failedValidationResponse(w http.ResponseWriter, r *http.Request, errors map[string]string) {
-	s.errorResponse(w, r, http.StatusUnprocessableEntity, errors)
-}
-
 func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {
 	message := "the requested resource cannot be found"
 	s.errorResponse(w, r, http.StatusNotFound, message)
 }
 
-func (s *Server) editConflictResponse(w http.ResponseWriter, r *http.Request) {
-	message := "the requested resource cannot be modified due to edit conflicts, please try again"
-	s.errorResponse(w, r, http.StatusConflict, message)
-}
-
-func (s *Server) alreadyActivatedResponse(w http.ResponseWriter, r *http.Request) {
-	message := "account is already active"
-	s.errorResponse(w, r, http.StatusConflict, message)
-}
-
-func (s *Server) invalidCredentialResponse(w http.ResponseWriter, r *http.Request) {
-	message := "invalid authentication credentials"
-	s.errorResponse(w, r, http.StatusUnauthorized, message)
-}
-
-func (s *Server) invalidAuthenticationTokenResponse(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("WWW-Authenticate", "Bearer")
-	message := "invalid or missing authentication token"
-	s.errorResponse(w, r, http.StatusUnauthorized, message)
-}
-
-func (s *Server) authenticationRequiredResponse(w http.ResponseWriter, r *http.Request) {
-	message := "you must be authenticated to access this resource"
-	s.errorResponse(w, r, http.StatusUnauthorized, message)
-}
-
-func (s *Server) inactiveAccountResponse(w http.ResponseWriter, r *http.Request) {
-	message := "your user account must be activated to access this resource"
+func (s *Server) notStoppableResponse(w http.ResponseWriter, r *http.Request) {
+	message := "the server cannot be stopped, the host will be notified for the request"
 	s.errorResponse(w, r, http.StatusForbidden, message)
 }
 
-func (s *Server) redundantSubscription(w http.ResponseWriter, r *http.Request) {
-	message := "single instance of subscription is allowed for this account"
+func (s *Server) notIdleResponse(w http.ResponseWriter, r *http.Request) {
+	message := "server is currently not idle (serving files)"
 	s.errorResponse(w, r, http.StatusConflict, message)
 }
