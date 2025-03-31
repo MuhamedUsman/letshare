@@ -20,5 +20,8 @@ func main() {
 			slog.Error(err.Error())
 		}
 	})
-	s.StartServerForDir("C:/Users/usman/Downloads/Programs")
+	err := s.StartServerForDir("C:/Users/usman/Downloads/Programs")
+	if err != nil {
+		slog.Error(err.Error())
+	}
 }

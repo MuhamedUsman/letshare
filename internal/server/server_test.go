@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/MuhamedUsman/letshare/internal/utility"
 	"github.com/grandcat/zeroconf"
 	"io"
@@ -128,6 +129,87 @@ func TestPublishEntry(t *testing.T) {
 	} else {
 		t.Error("No entry found for ", instance, service, domain, entries)
 		t.Fail()
+	}
+}
+
+func TestServer_Stop(t *testing.T) {
+	bt := utility.NewBackgroundTask()
+	ctx1, cancel1 := context.WithCancel(t.Context())
+	ctx2, cancel2 := context.WithCancel(t.Context())
+	ctx3, cancel3 := context.WithCancel(t.Context())
+	cases := map[string]Server{
+		"unstoppable": {false, ctx1, cancel1, bt, &sync.Mutex{}, 0},
+		"stoppable":   {true, ctx2, cancel2, bt, &sync.Mutex{}, 0},
+		"active":      {true, ctx3, cancel3, bt, &sync.Mutex{}, 10},
+	}
+	for name, server := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Create a request to pass to our handler
+			req, err := http.NewRequest("GET", "/stop", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Create a ResponseRecorder to record the response
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(server.Stop)
+			// Call the handler
+			handler.ServeHTTP(rr, req)
+
+			// Check status code and response body based on the case
+			switch name {
+			case "unstoppable":
+				// Expect not stoppable error
+				if rr.Code != http.StatusForbidden && rr.Code != http.StatusMethodNotAllowed {
+					t.Errorf("handler returned wrong status code: got %v want %v or %v",
+						rr.Code, http.StatusConflict, http.StatusMethodNotAllowed)
+				}
+
+			case "active":
+				// Expect not idle error
+				if rr.Code != http.StatusConflict && rr.Code != http.StatusServiceUnavailable {
+					t.Errorf("handler returned wrong status code: got %v want %v or %v",
+						rr.Code, http.StatusConflict, http.StatusServiceUnavailable)
+				}
+
+			case "stoppable":
+				// Expect success
+				if rr.Code != http.StatusAccepted {
+					t.Errorf("handler returned wrong status code: got %v want %v",
+						rr.Code, http.StatusAccepted)
+				}
+
+				// Check if cancel function was called
+				select {
+				case <-ctx2.Done():
+					// Context was canceled, which is expected
+				default:
+					t.Errorf("Stop did not cancel the context")
+				}
+
+				// Check response status
+				expected := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
+				// Read the response body
+				responseBody, err := io.ReadAll(rr.Body)
+				if err != nil {
+					t.Fatalf("Failed to read response body: %v", err)
+				}
+
+				// Parse the JSON response
+				var response map[string]interface{}
+				if err := json.Unmarshal(responseBody, &response); err != nil {
+					t.Fatalf("Failed to parse JSON response: %v", err)
+				}
+
+				// Check if message matches expected
+				message, exists := response["status"]
+				if !exists {
+					t.Errorf("Response does not contain 's' field: %s", string(responseBody))
+				} else if msg, ok := message.(string); !ok || msg != expected {
+					t.Errorf("Expected message '%s', got '%v'", expected, message)
+				}
+			}
+		})
 	}
 }
 
