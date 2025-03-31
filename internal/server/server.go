@@ -168,21 +168,7 @@ func (s *Server) StartServerForDir(dir string) error {
 		IdleTimeout:       10 * time.Second,
 		Handler:           s.routes(dir),
 	}
-	errChan := make(chan error)
-	go func() {
-		defer close(errChan)
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		select {
-		case <-s.StopCtx.Done():
-		case <-quit:
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err = server.Shutdown(ctx); err != nil {
-			errChan <- fmt.Errorf("shutting down server: %v", err)
-		}
-	}()
+	errChan := s.listenAndShutdown(server)
 	slog.Info("Starting Server", "address", server.Addr)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("server listning on address %q", server.Addr)
@@ -194,6 +180,25 @@ func (s *Server) StartServerForDir(dir string) error {
 		return fmt.Errorf("shutting down background tasks: %v", err)
 	}
 	return nil
+}
+
+func (s *Server) listenAndShutdown(server *http.Server) chan error {
+	errChan := make(chan error)
+	go func() {
+		defer close(errChan)
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-s.StopCtx.Done():
+		case <-quit:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			errChan <- fmt.Errorf("shutting down server: %v", err)
+		}
+	}()
+	return errChan
 }
 
 func (s *Server) routes(dir string) http.Handler {
@@ -284,7 +289,7 @@ func (s *Server) Stop(w http.ResponseWriter, r *http.Request) {
 	if s.Stoppable && c == 0 {
 		s.StopCancel()
 		msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
-		if err := s.writeJSON(w, envelop{"message": msg}, http.StatusAccepted, nil); err != nil {
+		if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
 			s.serverErrorResponse(w, r, err)
 		}
 		return
