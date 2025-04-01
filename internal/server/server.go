@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/utility"
-	"github.com/grandcat/zeroconf"
+	"github.com/MuhamedUsman/letshare/internal/domain"
+	"github.com/MuhamedUsman/letshare/internal/util"
 	"github.com/justinas/alice"
 	"io"
 	"log"
@@ -32,7 +32,7 @@ type Server struct {
 	// Cancel func for StopCtx
 	StopCancel context.CancelFunc
 	// Every Goroutine must run through BT Run function
-	BT *utility.BackgroundTask
+	BT *util.BackgroundTask
 	mu *sync.Mutex
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
@@ -41,7 +41,7 @@ type Server struct {
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		BT:         utility.NewBackgroundTask(),
+		BT:         util.NewBgTask(),
 		StopCtx:    ctx,
 		StopCancel: cancel,
 		mu:         new(sync.Mutex),
@@ -133,7 +133,7 @@ func copyFile(src, dst string) error {
 }
 
 // StartServerForDir starts an HTTP server that serves files from the specified directory.
-// It binds to the machine's outbound IP address on port 80 and handles graceful shutdown
+// It binds to the machine's outbound IP address on port 2403 and handles graceful shutdown
 // on context cancellation or OS termination signals (SIGINT, SIGTERM).
 //
 // The function sets up proper timeouts for read operations and idle connections.
@@ -209,14 +209,6 @@ func (s *Server) routes(dir string) http.Handler {
 	return mux
 }
 
-type FSInfo struct {
-	Name    string
-	Path    string
-	Size    int64
-	Type    string // MIME type, if not resolved then extension
-	ModTime time.Time
-}
-
 // JsonFileServer creates an HTTP handler that serves files from the specified directory.
 // For the root URL ("/"), it returns a JSON-formatted directory listing containing details
 // of all files (not subdirectories) in the directory. For other paths, it serves the
@@ -247,7 +239,7 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			http.ServeFile(w, r, path.Join(dir, path.Clean(r.URL.Path)))
 			return
 		}
-		var fsInfos []FSInfo
+		var fsInfos []domain.FileInfo
 		for _, entry := range entries {
 			// only host files
 			if entry.IsDir() {
@@ -260,7 +252,7 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			if fileType == "" {
 				fileType = strings.TrimPrefix(ext, ".")
 			}
-			fsInfo := FSInfo{
+			fsInfo := domain.FileInfo{
 				Name:    entry.Name(),
 				Path:    path.Join("/", url.PathEscape(entry.Name())),
 				Size:    finfo.Size(),
@@ -310,57 +302,4 @@ func GetOutboundIP() (net.IP, error) {
 	defer conn.Close()
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP, nil
-}
-
-// PublishEntry publishes a Multicast DNS entry over available network interfaces.
-// It uses the predefined service "_http._tcp", domain "local.", and port 80.
-// The function blocks until the provided context is canceled, at which point
-// it shuts down the mDNS server and returns.
-//
-// Parameters:
-//   - ctx: Context that controls the lifetime of the mDNS service
-//   - instance: The instance name to publish (visible as the service name)
-//   - info: Optional text records to associate with the service
-//
-// Returns an error if the service registration fails.
-func PublishEntry(ctx context.Context, instance string, info ...string) error {
-	server, err := zeroconf.Register(instance, "_http._tcp", "local.", 80, info, nil)
-	if err != nil {
-		return fmt.Errorf("registering zeroconf: %v", err)
-	}
-	defer server.Shutdown()
-	<-ctx.Done()
-	return nil
-}
-
-func (s *Server) ResolveEntry() {
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		log.Fatalln("Failed to initialize resolver:", err.Error())
-	}
-
-	entries := make(chan *zeroconf.ServiceEntry)
-	s.BT.Run(func(shutdownCtx context.Context) {
-		for {
-			select {
-			case <-shutdownCtx.Done():
-				return
-			case entry, ok := <-entries:
-				if !ok {
-					log.Println("No more entries")
-					return
-				}
-
-				log.Println("Received entry:", entry)
-			}
-		}
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
-	err = resolver.Browse(ctx, "_http._tcp", "local.", entries)
-	if err != nil {
-		log.Fatalln("Failed to browse:", err.Error())
-	}
-	<-ctx.Done()
 }

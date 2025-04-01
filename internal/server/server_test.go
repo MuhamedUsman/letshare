@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/MuhamedUsman/letshare/internal/utility"
+	"github.com/MuhamedUsman/letshare/internal/util"
 	"github.com/grandcat/zeroconf"
 	"io"
 	"net/http"
@@ -20,7 +20,7 @@ func TestCopyFilesToDir(t *testing.T) {
 	tempDir := t.TempDir()
 	files := createTempFiles(t, 3, tempDir)
 	s := &Server{
-		BT: utility.NewBackgroundTask(),
+		BT: util.NewBgTask(),
 	}
 	var ch CopyStatChan
 	t.Log("Copying files to temp dir", "files", len(files), "tempDir", tempDir)
@@ -40,7 +40,7 @@ func TestCopyFilesToDir(t *testing.T) {
 func TestSrvDir(t *testing.T) {
 	tempDir := t.TempDir()
 	s := &Server{
-		BT: utility.NewBackgroundTask(),
+		BT: util.NewBgTask(),
 	}
 	tempFiles := createTempFiles(t, 3, tempDir)
 	ch := s.CopyFilesToDir(tempDir, tempFiles...)
@@ -107,7 +107,7 @@ func TestPublishEntry(t *testing.T) {
 			}
 		}
 	}()
-	// service & domain are hardcoded in the PublishEntry function
+	// service & domain are hardcoded in the Publish function
 	tctx, cancel2 := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel2()
 	if err = resolver.Lookup(tctx, instance, service, domain, entriesCh); err != nil {
@@ -133,7 +133,7 @@ func TestPublishEntry(t *testing.T) {
 }
 
 func TestServer_Stop(t *testing.T) {
-	bt := utility.NewBackgroundTask()
+	bt := util.NewBgTask()
 	ctx1, cancel1 := context.WithCancel(t.Context())
 	ctx2, cancel2 := context.WithCancel(t.Context())
 	ctx3, cancel3 := context.WithCancel(t.Context())

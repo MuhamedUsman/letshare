@@ -1,4 +1,4 @@
-package utility
+package util
 
 import (
 	"context"
@@ -9,10 +9,12 @@ import (
 )
 
 var (
-	bt   *BackgroundTask
 	once sync.Once
+	bt   *BackgroundTask
 )
 
+// BackgroundTask manages a collection of goroutines with shared lifecycle.
+// It provides a mechanism to run, track, and gracefully shut down background tasks.
 type BackgroundTask struct {
 	wg     *sync.WaitGroup
 	ctx    context.Context
@@ -20,7 +22,9 @@ type BackgroundTask struct {
 	Tasks  int
 }
 
-func NewBackgroundTask() *BackgroundTask {
+// NewBgTask returns a singleton BackgroundTask instance.
+// It creates the instance on first call and returns the same instance on subsequent calls.
+func NewBgTask() *BackgroundTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	once.Do(func() {
 		bt = &BackgroundTask{
@@ -32,6 +36,9 @@ func NewBackgroundTask() *BackgroundTask {
 	return bt
 }
 
+// Run executes the provided function in a goroutine and tracks it.
+// The function receives a context that will be canceled when shutdown is initiated.
+// Automatically handles panics and decrements task count when the goroutine completes.
 func (bt *BackgroundTask) Run(fn func(shutdownCtx context.Context)) {
 	bt.wg.Add(1)
 	bt.Tasks++
@@ -47,6 +54,9 @@ func (bt *BackgroundTask) Run(fn func(shutdownCtx context.Context)) {
 	}()
 }
 
+// Shutdown cancels all running tasks and waits for them to complete.
+// Returns nil if all tasks complete before the timeout, otherwise returns an error.
+// timeout: maximum duration to wait for all tasks to complete.
 func (bt *BackgroundTask) Shutdown(timeout time.Duration) error {
 	bt.cancel()
 	wait := make(chan struct{})
