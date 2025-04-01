@@ -3,11 +3,11 @@ package domain
 import "time"
 
 type FileInfo struct {
-	Name string
-	Path string
-	// file size in bytes
-	Size int64
-	Type string // MIME type, if not resolved then extension
 	// last modified time
-	ModTime time.Time
+	ModTime time.Time `json:"modTime,omitempty,omitzero"`
+	Name    string    `json:"name,omitempty"`
+	Path    string    `json:"path,omitempty"`
+	Type    string    `json:"type,omitempty"` // MIME type, if not resolved then extension
+	// file size in bytes
+	Size int64 `json:"size,omitempty"`
 }

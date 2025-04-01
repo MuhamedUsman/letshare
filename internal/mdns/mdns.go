@@ -27,8 +27,8 @@ type MDNS struct {
 // New creates and returns a new MDNS instance ready for use.
 // The returned instance is initialized with an empty entries map
 // and a background task manager.
-func New() MDNS {
-	return MDNS{
+func New() *MDNS {
+	return &MDNS{
 		bt:      util.NewBgTask(),
 		entries: make(ServiceEntry),
 	}
@@ -66,6 +66,7 @@ func (r *MDNS) Publish(ctx context.Context, instance string, info ...string) err
 //
 // The discovery process continues until the Application exits.
 // The entries map is cleared when discovery stops.
+// The entries can be accessed through MDNS.Entries
 func (r *MDNS) DiscoverMDNSEntries(afterEach, lookFor time.Duration) <-chan error {
 	errCh := make(chan error)
 	r.bt.Run(func(shutdownCtx context.Context) {
