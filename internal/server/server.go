@@ -137,7 +137,7 @@ func copyFile(src, dst string) error {
 // on context cancellation or OS termination signals (SIGINT, SIGTERM).
 //
 // The function sets up proper timeouts for read operations and idle connections.
-// The server routes are configured through the Server.routes method which should
+// The server Routes are configured through the Server.Routes method which should
 // handle serving files from the provided directory.
 //
 // Parameters:
@@ -166,7 +166,7 @@ func (s *Server) StartServerForDir(dir string) error {
 		ReadTimeout:       4 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		IdleTimeout:       10 * time.Second,
-		Handler:           s.routes(dir),
+		Handler:           s.Routes(dir),
 	}
 	errChan := s.listenAndShutdown(server)
 	slog.Info("Starting Server", "address", server.Addr)
@@ -201,7 +201,7 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	return errChan
 }
 
-func (s *Server) routes(dir string) http.Handler {
+func (s *Server) Routes(dir string) http.Handler {
 	mux := http.NewServeMux()
 	panicRecover := alice.New(s.recoverPanic)
 	mux.Handle("GET /", panicRecover.Then(s.JsonFileServer(dir)))
@@ -261,7 +261,7 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			}
 			fsInfos = append(fsInfos, fsInfo)
 		}
-		if err = s.writeJSON(w, envelop{"Shared": fsInfos}, http.StatusOK, nil); err != nil {
+		if err = s.writeJSON(w, envelop{"directoryIndex": fsInfos}, http.StatusOK, nil); err != nil {
 			s.serverErrorResponse(w, r, err)
 			return
 		}

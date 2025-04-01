@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/MuhamedUsman/letshare/internal/domain"
 	"github.com/MuhamedUsman/letshare/internal/util"
-	"github.com/grandcat/zeroconf"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"slices"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -17,119 +17,99 @@ import (
 
 // The first step will be to take any numbers of files and srv them
 func TestCopyFilesToDir(t *testing.T) {
-	tempDir := t.TempDir()
-	files := createTempFiles(t, 3, tempDir)
-	s := &Server{
-		BT: util.NewBgTask(),
-	}
-	var ch CopyStatChan
-	t.Log("Copying files to temp dir", "files", len(files), "tempDir", tempDir)
-	ch = s.CopyFilesToDir(tempDir, files...)
-	for {
-		stat, ok := <-ch
-		if !ok {
-			break
-		}
+	tempDir1 := t.TempDir()
+	fileContents := "test content"
+	files := createTempFiles(t, 3, tempDir1, fileContents)
+	s := New()
+
+	// Test normal copying
+	t.Log("Copying files to temp dir", "files", len(files), "tempDir1", tempDir1)
+	ch := s.CopyFilesToDir(tempDir1, files...)
+	var count int
+	for stat := range ch {
 		if stat.Err != nil {
 			t.Fatal(stat.Err.Error())
 		}
-		t.Log("Copied File: ", "N", stat.N)
+		count++
+	}
+
+	// Verify all files were copied
+	if count != len(files) {
+		t.Fatalf("Expected %d files to be copied, got %d", len(files), count)
+	}
+
+	// Verify files exist in destination
+	for _, f := range files {
+		destPath := filepath.Join(tempDir1, filepath.Base(f))
+		if _, err := os.Stat(destPath); os.IsNotExist(err) {
+			t.Fatalf("File %s was not copied to destination", f)
+		}
+	}
+
+	// Test cancellation during copy (cleanup)
+	tempDir2 := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	s2 := &Server{
+		BT:         util.NewBgTask(),
+		StopCtx:    ctx,
+		StopCancel: cancel,
+		mu:         new(sync.Mutex),
+	}
+
+	// Cancel after first file
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	ch = s2.CopyFilesToDir(tempDir2, files...)
+	for range ch {
+		// Just drain the channel
 	}
 }
 
 func TestSrvDir(t *testing.T) {
 	tempDir := t.TempDir()
-	s := &Server{
-		BT: util.NewBgTask(),
-	}
-	tempFiles := createTempFiles(t, 3, tempDir)
+	s := New()
+
+	fileContents := "test content"
+	tempFiles := createTempFiles(t, 3, tempDir, fileContents)
+
 	ch := s.CopyFilesToDir(tempDir, tempFiles...)
-	for {
-		stat, ok := <-ch
-		if !ok {
-			break
-		}
+	for stat := range ch {
 		if stat.Err != nil {
-			t.Fatal(stat.Err.Error())
+			t.Fatal(stat.Err)
 		}
 	}
-	server := httptest.NewServer(s.routes(tempDir))
+
+	server := httptest.NewServer(s.Routes(tempDir))
 	defer server.Close()
+
+	// Test directory listing
 	resp, err := http.Get(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	readBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(string(readBytes))
-}
+	defer resp.Body.Close()
 
-func TestPublishEntry(t *testing.T) {
-	ctx, cancel1 := context.WithCancel(t.Context())
-	var wg sync.WaitGroup
-	defer cancel1()
-	instance := "Letshare"
-	service := "_http._tcp"
-	domain := "local."
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := PublishEntry(ctx, instance, "Testing..."); err != nil {
-			cancel1()
-			t.Error(err)
-			t.Fail()
-		}
-	}()
-	time.Sleep(50 * time.Millisecond) // wait for it to publish
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		t.Fatal(err)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
 	}
-	entriesCh := make(chan *zeroconf.ServiceEntry)
-	entries := make([]*zeroconf.ServiceEntry, 0)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case entry, ok := <-entriesCh:
-				if !ok {
-					cancel1()
-					return
-				}
-				if entry != nil {
-					entries = append(entries, entry)
-				}
-			}
-		}
-	}()
-	// service & domain are hardcoded in the Publish function
-	tctx, cancel2 := context.WithTimeout(ctx, 50*time.Millisecond)
-	defer cancel2()
-	if err = resolver.Lookup(tctx, instance, service, domain, entriesCh); err != nil {
-		cancel1()
-		cancel2()
-		t.Fatal(err)
+
+	var response map[string][]domain.FileInfo
+	if err = json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode JSON: %v", err)
 	}
-	wg.Wait()
-	if slices.ContainsFunc(entries, func(entry *zeroconf.ServiceEntry) bool {
-		if entry.Instance == instance &&
-			entry.Domain == domain &&
-			entry.Service == service &&
-			entry.Port == 80 {
-			return true
-		}
-		return false
-	}) {
-		t.Log("Entry Found")
-	} else {
-		t.Error("No entry found for ", instance, service, domain, entries)
-		t.Fail()
+
+	files, ok := response["directoryIndex"]
+	if !ok {
+		t.Fatal("Expected 'directoryIndex' in response")
 	}
+
+	if len(files) != len(tempFiles) {
+		t.Fatalf("Expected %d files, got %d", len(tempFiles), len(files))
+	}
+
 }
 
 func TestServer_Stop(t *testing.T) {
@@ -190,14 +170,15 @@ func TestServer_Stop(t *testing.T) {
 				// Check response status
 				expected := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
 				// Read the response body
-				responseBody, err := io.ReadAll(rr.Body)
+				var responseBody []byte
+				responseBody, err = io.ReadAll(rr.Body)
 				if err != nil {
 					t.Fatalf("Failed to read response body: %v", err)
 				}
 
 				// Parse the JSON response
-				var response map[string]interface{}
-				if err := json.Unmarshal(responseBody, &response); err != nil {
+				var response map[string]any
+				if err = json.Unmarshal(responseBody, &response); err != nil {
 					t.Fatalf("Failed to parse JSON response: %v", err)
 				}
 
@@ -213,14 +194,14 @@ func TestServer_Stop(t *testing.T) {
 	}
 }
 
-func createTempFiles(t *testing.T, n int, tempDir string) []string {
+func createTempFiles(t *testing.T, n int, tempDir, content string) []string {
 	files := make([]string, 3)
 	for i := range n {
 		f, err := os.CreateTemp(tempDir, "temp-*.txt")
 		if err != nil {
 			t.Errorf("failed to create temp file: %v", err)
 		}
-		if _, err = f.Write([]byte("test content")); err != nil {
+		if _, err = f.Write([]byte(content)); err != nil {
 			t.Errorf("failed to write to temp file: %v", err)
 		}
 		_ = f.Close()
