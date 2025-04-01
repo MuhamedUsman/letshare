@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+var (
+	once = new(sync.Once)
+	mdns *MDNS
+)
+
 // ServiceEntry represents a map of discovered mDNS services where:
 // - Key: Instance name of the service
 // - Value: Host name of the device providing the service
@@ -27,11 +32,17 @@ type MDNS struct {
 // New creates and returns a new MDNS instance ready for use.
 // The returned instance is initialized with an empty entries map
 // and a background task manager.
+//
+// This function uses a singleton pattern to ensure only one MDNS instance
+// exists across the application. Subsequent calls will return the same instance.
 func New() *MDNS {
-	return &MDNS{
-		bt:      util.NewBgTask(),
-		entries: make(ServiceEntry),
-	}
+	once.Do(func() {
+		mdns = &MDNS{
+			bt:      util.NewBgTask(),
+			entries: make(ServiceEntry),
+		}
+	})
+	return mdns
 }
 
 // Publish advertises a service via Multicast DNS over available network interfaces.
@@ -64,9 +75,10 @@ func (r *MDNS) Publish(ctx context.Context, instance string, info ...string) err
 // Returns a channel that will receive any errors encountered during discovery.
 // The channel is closed when discovery stops.
 //
-// The discovery process continues until the Application exits.
-// The entries map is cleared when discovery stops.
-// The entries can be accessed through MDNS.Entries
+// The first discovery attempt occurs immediately, with subsequent attempts
+// occurring after waiting for the 'afterEach' duration. The discovery process
+// continues until the Application exits. When discovery stops, the entries map
+// is cleared, and the entries can be accessed through MDNS.Entries.
 func (r *MDNS) DiscoverMDNSEntries(afterEach, lookFor time.Duration) <-chan error {
 	errCh := make(chan error)
 	r.bt.Run(func(shutdownCtx context.Context) {
@@ -74,11 +86,12 @@ func (r *MDNS) DiscoverMDNSEntries(afterEach, lookFor time.Duration) <-chan erro
 			close(errCh)
 			clear(r.entries)
 		}()
+		ticker := time.NewTimer(0) // fetch entries with no delay for the 1st time
 		for {
 			select {
 			case <-shutdownCtx.Done():
 				return
-			case <-time.After(afterEach):
+			case <-ticker.C:
 				entries, err := r.lookup(lookFor)
 				if err != nil {
 					errCh <- err
@@ -87,6 +100,7 @@ func (r *MDNS) DiscoverMDNSEntries(afterEach, lookFor time.Duration) <-chan erro
 				r.mu.Lock()
 				r.entries = entries // replace with updated entries
 				r.mu.Unlock()
+				ticker.Reset(afterEach) // once fetched, reset to actual interval
 			}
 		}
 	})
