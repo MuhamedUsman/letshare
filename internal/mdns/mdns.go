@@ -56,7 +56,7 @@ func New() *MDNS {
 //
 // Returns an error if the service registration fails.
 func (r *MDNS) Publish(ctx context.Context, instance string, info ...string) error {
-	server, err := zeroconf.Register(instance, "_http._tcp", "local.", 80, info, nil)
+	server, err := zeroconf.Register(instance, "_letshare._tcp", "local.", 5353, info, nil)
 	if err != nil {
 		return fmt.Errorf("registering mdns entry through zeroconf: %v", err)
 	}
@@ -143,7 +143,7 @@ func (r *MDNS) lookup(timeout time.Duration) (ServiceEntry, error) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	err = resolver.Browse(ctx, "_http._tcp", "local.", entriesCh)
+	err = resolver.Browse(ctx, "_letshare._tcp", "local.", entriesCh)
 	if err != nil {
 		return nil, fmt.Errorf("browsing mdns entries: %v", err)
 	}

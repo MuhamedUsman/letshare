@@ -25,7 +25,7 @@ func TestMDNSDiscoveryAndPublication(t *testing.T) {
 	}()
 
 	<-publishReady
-	// Lookup the published entry
+	// lookup the published entry
 	var err error
 	entries, err = mdns.lookup(500 * time.Millisecond) // some timeout so the publishing may finish till then
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {

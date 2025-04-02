@@ -205,7 +205,7 @@ func (s *Server) Routes(dir string) http.Handler {
 	mux := http.NewServeMux()
 	panicRecover := alice.New(s.recoverPanic)
 	mux.Handle("GET /", panicRecover.Then(s.JsonFileServer(dir)))
-	mux.Handle("GET /stop", panicRecover.ThenFunc(s.Stop))
+	mux.Handle("POST /stop", panicRecover.ThenFunc(s.Stop))
 	return mux
 }
 
