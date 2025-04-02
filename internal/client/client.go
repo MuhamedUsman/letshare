@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,4 +63,34 @@ func (c *Client) IndexDirectory(instance string) ([]*domain.FileInfo, error) {
 	}
 
 	return dir.Indexes, nil
+}
+
+func (c *Client) StopServer(instance string) (int, string, error) {
+	entries := c.mdns.Entries()
+	hostname, ok := entries[instance]
+	if !ok {
+		return 0, "", fmt.Errorf("instance %q not found in mDNS entries", instance)
+	}
+	resp, err := c.http.Post("http://"+hostname+stop, "application/json", new(bytes.Buffer))
+	var urlErr *url.Error
+	if err != nil {
+		if errors.As(err, &urlErr) && urlErr.Timeout() {
+			return http.StatusRequestTimeout, "", fmt.Errorf("stopping server: request timed out")
+		}
+		return -1, "", fmt.Errorf("stopping server: %v", err)
+	}
+	defer resp.Body.Close()
+	bytes, err := io.ReadAll(resp.Body)
+	var response struct {
+		Status string `json:"status"`
+	}
+	if err = json.Unmarshal(bytes, &response); err != nil {
+		return -1, "", fmt.Errorf("parsing server response while stopping: %v", err)
+	}
+	if resp.StatusCode != http.StatusAccepted &&
+		resp.StatusCode != http.StatusForbidden &&
+		resp.StatusCode != http.StatusConflict {
+		return resp.StatusCode, "", fmt.Errorf("server returned status %d while stopping server", resp.StatusCode)
+	}
+	return resp.StatusCode, response.Status, nil
 }
