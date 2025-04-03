@@ -30,7 +30,7 @@ type Server struct {
 	// Once Done, the server will exit
 	StopCtx context.Context
 	// Cancel func for StopCtx
-	StopCancel context.CancelFunc
+	StopCtxCancel context.CancelFunc
 	// Every Goroutine must run through BT Run function
 	BT *util.BackgroundTask
 	mu *sync.Mutex
@@ -41,11 +41,11 @@ type Server struct {
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		BT:         util.NewBgTask(),
-		StopCtx:    ctx,
-		StopCancel: cancel,
-		mu:         new(sync.Mutex),
-		Stoppable:  true,
+		BT:            util.NewBgTask(),
+		StopCtx:       ctx,
+		StopCtxCancel: cancel,
+		mu:            new(sync.Mutex),
+		Stoppable:     true,
 	}
 }
 
@@ -279,7 +279,7 @@ func (s *Server) Stop(w http.ResponseWriter, r *http.Request) {
 	c := s.ActiveDowns
 	s.mu.Unlock()
 	if s.Stoppable && c == 0 {
-		s.StopCancel()
+		s.StopCtxCancel()
 		msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
 		if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
 			s.serverErrorResponse(w, r, err)
