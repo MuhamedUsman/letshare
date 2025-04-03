@@ -50,10 +50,10 @@ func TestCopyFilesToDir(t *testing.T) {
 	tempDir2 := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	s2 := &Server{
-		BT:         util.NewBgTask(),
-		StopCtx:    ctx,
-		StopCancel: cancel,
-		mu:         new(sync.Mutex),
+		BT:            util.NewBgTask(),
+		StopCtx:       ctx,
+		StopCtxCancel: cancel,
+		mu:            new(sync.Mutex),
 	}
 
 	// Cancel after first file
