@@ -6,16 +6,13 @@ type receiveModel struct {
 }
 
 func (m receiveModel) Init() tea.Cmd {
-	//TODO implement me
-	panic("implement me")
+	return nil
 }
 
-func (m receiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	//TODO implement me
-	panic("implement me")
+func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
+	return m, nil
 }
 
 func (m receiveModel) View() string {
-	//TODO implement me
-	panic("implement me")
+	return ""
 }

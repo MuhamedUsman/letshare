@@ -6,16 +6,13 @@ type infoModel struct {
 }
 
 func (m infoModel) Init() tea.Cmd {
-	//TODO implement me
-	panic("implement me")
+	return nil
 }
 
-func (m infoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	//TODO implement me
-	panic("implement me")
+func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
+	return m, nil
 }
 
 func (m infoModel) View() string {
-	//TODO implement me
-	panic("implement me")
+	return ""
 }
