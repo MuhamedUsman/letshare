@@ -2,7 +2,6 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type focus int
@@ -16,7 +15,10 @@ const (
 	info
 )
 
-var curFocus focus
+var (
+	termW, termH int
+	curFocus     focus
+)
 
 type MainModel struct {
 	send    sendModel
@@ -24,33 +26,47 @@ type MainModel struct {
 	info    infoModel
 }
 
+func InitialMainModel() MainModel {
+	return MainModel{
+		send: initialSendModel(),
+	}
+}
+
 func (m MainModel) Init() tea.Cmd {
-	return nil
+	return tea.Batch(m.send.Init())
 }
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
-		terminalHeight = msg.Height
-		terminalWidth = msg.Width
+		termW = msg.Width
+		termH = msg.Height
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "ctrl+c":
 			return m, tea.Quit
 		}
 	}
 
-	return m, nil
+	return m, m.handleChildModelUpdates(msg)
 }
 
 func (m MainModel) View() string {
-	container := lipgloss.NewStyle().
-		Border(lipgloss.ThickBorder(), true).
-		Width(terminalWidth - 2).
-		Height(terminalHeight - 2).
-		Align(lipgloss.Center).
-		Render()
-	return lipgloss.Place(terminalWidth, terminalHeight, lipgloss.Center, lipgloss.Center, container)
+	subW := mainContainerStyle.GetHorizontalFrameSize()
+	subH := mainContainerStyle.GetVerticalFrameSize()
+	c := mainContainerStyle.
+		Width(termW - subW).
+		Height(termH - subH).
+		Render(m.send.View())
+	return c
+}
+
+func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
+	cmds := make([]tea.Cmd, 3)
+	m.send, cmds[0] = m.send.Update(msg)
+	m.receive, cmds[1] = m.receive.Update(msg)
+	m.info, cmds[2] = m.info.Update(msg)
+	return tea.Batch(cmds...)
 }

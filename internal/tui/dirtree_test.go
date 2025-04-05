@@ -6,7 +6,7 @@ import (
 )
 
 func TestDirTreeWalkDir(t *testing.T) {
-	m := dirTree{}
+	m := dirTreeModel{}
 	tv, err := m.walkDir("D:BSCS Spring 2022/7th Semester")
 	if err != nil {
 		t.Fatal(err)
@@ -17,7 +17,7 @@ func TestDirTreeWalkDir(t *testing.T) {
 }
 
 func BenchmarkDirTree_walkDir(b *testing.B) {
-	m := dirTree{}
+	m := dirTreeModel{}
 	for i := 0; i < b.N; i++ {
 		m.walkDir("D:BSCS Spring 2022/7th Semester")
 	}
