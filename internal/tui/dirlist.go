@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -43,13 +44,6 @@ func (i dirItem) Description() string {
 	return ""
 }
 
-type dirListKeyMap struct {
-	dirIn  key.Binding
-	dirOut key.Binding
-	up     key.Binding
-	down   key.Binding
-}
-
 type dirListModel struct {
 	// directory List: children dirs in a parent dirAction
 	dirList    list.Model
@@ -62,8 +56,8 @@ func initialDirListModel() dirListModel {
 		wd = "."
 	}
 	return dirListModel{
-		dirList:    newDirList(),
 		curDirPath: wd,
+		dirList:    newDirList(),
 	}
 }
 
@@ -80,16 +74,20 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			selDir := m.dirList.SelectedItem().FilterValue()
-			selDir = filepath.Join(m.curDirPath, selDir) // Dir in
-			return m, m.readDir(selDir, in)
+			if m.dirList.SelectedItem() != nil {
+				selDir := m.dirList.SelectedItem().FilterValue()
+				selDir = filepath.Join(m.curDirPath, selDir) // Dir in
+				return m, m.readDir(selDir, in)
+			}
 
 		case "backspace":
-			dirOut := filepath.Dir(m.curDirPath) // Dir out
-			if m.curDirPath == dirOut {
-				return m, m.createDirListStatusMsg("It's the top!")
+			if m.dirList.FilterState() == list.Unfiltered {
+				dirOut := filepath.Dir(m.curDirPath) // Dir out
+				if m.curDirPath == dirOut {
+					return m, m.createDirListStatusMsg("It's the top!")
+				}
+				return m, m.readDir(dirOut, out)
 			}
-			return m, m.readDir(dirOut, out)
 
 		case "/":
 			m.dirList.SetDelegate(customDelegate())
@@ -101,7 +99,7 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 			m.curDirPath = m.getCurDirPath(msg.action)
 			m.dirList.Title = m.getDirListTitle(m.curDirPath)
 		}
-		m.dirList.Select(0)
+		m.dirList.ResetSelected()
 		return m, m.populateDirList(msg.entries)
 
 	case permDeniedMsg:
@@ -125,75 +123,19 @@ func (m dirListModel) View() string {
 }
 
 func newDirList() list.Model {
-	s := []list.Item{
-		dirItem("Tokyo"),
-		dirItem("Delhi"),
-		dirItem("Shanghai"),
-		dirItem("Dhaka"),
-		dirItem("São Paulo"),
-		dirItem("Mexico City"),
-		dirItem("Cairo"),
-		dirItem("Beijing"),
-		dirItem("Mumbai"),
-		dirItem("Osaka"),
-		dirItem("Chongqing"),
-		dirItem("Karachi"),
-		dirItem("Istanbul"),
-		dirItem("Kinshasa"),
-		dirItem("Lagos"),
-		dirItem("Buenos Aires"),
-		dirItem("Kolkata"),
-		dirItem("Manila"),
-		dirItem("Tianjin"),
-		dirItem("Guangzhou"),
-		dirItem("Rio De Janeiro"),
-		dirItem("Lahore"),
-		dirItem("Bangalore"),
-		dirItem("Shenzhen"),
-		dirItem("Moscow"),
-		dirItem("Chennai"),
-		dirItem("Bogota"),
-		dirItem("Paris"),
-		dirItem("Jakarta"),
-		dirItem("Lima"),
-		dirItem("Bangkok"),
-		dirItem("Hyderabad"),
-		dirItem("Seoul"),
-		dirItem("Nagoya"),
-		dirItem("London"),
-		dirItem("Chengdu"),
-		dirItem("Nanjing"),
-		dirItem("Tehran"),
-		dirItem("Ho Chi Minh City"),
-		dirItem("Luanda"),
-		dirItem("Wuhan"),
-		dirItem("Xi An Shaanxi"),
-		dirItem("Ahmedabad"),
-		dirItem("Kuala Lumpur"),
-		dirItem("New York City"),
-		dirItem("Hangzhou"),
-		dirItem("Surat"),
-		dirItem("Suzhou"),
-		dirItem("Hong Kong"),
-		dirItem("Riyadh"),
-	}
-	l := list.New(s, customDelegate(), 0, 0)
+	l := list.New(nil, customDelegate(), 0, 0)
 	l.Title = "Local"
 	l.SetStatusBarItemName("Dir", "Dirs")
 	l.DisableQuitKeybindings()
 
 	l.AdditionalFullHelpKeys = func() []key.Binding {
 		return []key.Binding{
-			key.NewBinding(
-				key.WithKeys("ctrl+left", "ctrl+l"),
-				key.WithHelp("ctrl+←/ctrl+l", "out of dirAction"),
-			),
-			key.NewBinding(
-				key.WithKeys("ctrl+right", "ctrl+h"),
-				key.WithHelp("ctrl+⇾/ctrl+h", "into dirAction"),
-			),
+			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "files")),
+			key.NewBinding(key.WithKeys("backspace"), key.WithHelp("b-space", "dir up")),
 		}
 	}
+
+	l.Help.Styles = customDirListHelpStyles(l.Help.Styles)
 
 	l.Styles.Title = l.Styles.Title.
 		Background(highlightColor).
@@ -243,6 +185,16 @@ func newDirList() list.Model {
 	return l
 }
 
+func customDirListHelpStyles(s help.Styles) help.Styles {
+	s.FullSeparator = s.FullSeparator.Foreground(highlightColor).Faint(true)
+	s.ShortSeparator = s.ShortSeparator.Foreground(highlightColor).Faint(true)
+	s.ShortKey = s.ShortKey.Foreground(highlightColor).Faint(true)
+	s.FullKey = s.FullKey.Foreground(highlightColor).Faint(true)
+	s.FullDesc = s.FullDesc.Foreground(subduedHighlightColor)
+	s.ShortDesc = s.ShortDesc.Foreground(subduedHighlightColor)
+	return s
+}
+
 func customDelegate() list.ItemDelegate {
 	d := list.NewDefaultDelegate()
 	d.ShowDescription = false
@@ -272,7 +224,7 @@ func customDelegate() list.ItemDelegate {
 
 func (m *dirListModel) updateDimensions() {
 	// +1 for some buggy behaviour of pagination when transitioning from filtering to normal list after hitting esc
-	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize() + 1)
+	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize())
 	w := smallContainerW() - sendContainerStyle.GetHorizontalFrameSize()
 	m.dirList.SetSize(w, h)
 }
