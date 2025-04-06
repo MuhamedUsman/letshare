@@ -1,44 +1,32 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-type dirEntryMsg = []string
+type dirAction = int
 
-type stack struct {
-	s    []string
-	push func(string)
-	pop  func() string
-	peek func() string
-}
+const (
+	noop dirAction = iota
+	in
+	out
+)
 
-func newStack() stack {
-	s := make([]string, 0)
-	return stack{
-		push: func(dir string) { s = append(s, dir) },
-		pop: func() string {
-			if len(s) == 0 {
-				return ""
-			}
-			r := s[len(s)-1]
-			s = s[:len(s)-1]
-			return r
-		},
-		peek: func() string {
-			if len(s) == 0 {
-				return ""
-			}
-			return s[len(s)-1]
-		},
-	}
+type dirEntryMsg struct {
+	entries []string
+	action  dirAction
 }
 
 type dirItem string
@@ -55,27 +43,32 @@ func (i dirItem) Description() string {
 	return ""
 }
 
-type dirListModel struct {
-	dirStack stack
-	// directory List: children dirs in a parent dir
-	dirList list.Model
+type dirListKeyMap struct {
+	dirIn  key.Binding
+	dirOut key.Binding
+	up     key.Binding
+	down   key.Binding
 }
 
-func initialDirTreeModel() dirListModel {
+type dirListModel struct {
+	// directory List: children dirs in a parent dirAction
+	dirList    list.Model
+	curDirPath string
+}
+
+func initialDirListModel() dirListModel {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = "."
 	}
-	s := newStack()
-	s.push(wd)
 	return dirListModel{
-		dirStack: s,
-		dirList:  newDirList(),
+		dirList:    newDirList(),
+		curDirPath: wd,
 	}
 }
 
 func (m dirListModel) Init() tea.Cmd {
-	return m.readDir(m.dirStack.peek())
+	return m.readDir(m.curDirPath, noop)
 }
 
 func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
@@ -87,13 +80,16 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			selDirPath := m.dirList.SelectedItem().FilterValue()      // name of dir
-			selDirPath = filepath.Join(m.dirStack.peek(), selDirPath) // peek -> absolute path of parent dir
-			m.dirStack.push(selDirPath)
-			return m, m.readDir(selDirPath)
+			selDir := m.dirList.SelectedItem().FilterValue()
+			selDir = filepath.Join(m.curDirPath, selDir) // Dir in
+			return m, m.readDir(selDir, in)
 
-		case ">":
-			return m, m.readDir(m.dirStack.pop())
+		case "backspace":
+			dirOut := filepath.Dir(m.curDirPath) // Dir out
+			if m.curDirPath == dirOut {
+				return m, m.createDirListStatusMsg("It's the top!")
+			}
+			return m, m.readDir(dirOut, out)
 
 		case "/":
 			m.dirList.SetDelegate(customDelegate())
@@ -101,7 +97,18 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 		}
 
 	case dirEntryMsg:
-		// return m, m.populateDirList(s)
+		if msg.action != noop {
+			m.curDirPath = m.getCurDirPath(msg.action)
+			m.dirList.Title = m.getDirListTitle(m.curDirPath)
+		}
+		m.dirList.Select(0)
+		return m, m.populateDirList(msg.entries)
+
+	case permDeniedMsg:
+		return m, m.createDirListStatusMsg("Perm Denied!")
+
+	case errMsg:
+		log.Fatal(msg)
 
 	}
 
@@ -109,27 +116,12 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 }
 
 func (m dirListModel) View() string {
-	return m.dirList.View()
-}
-
-func (dirListModel) readDir(dir string) tea.Cmd {
-	return func() tea.Msg {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return errMsg{
-				err:    fmt.Errorf("reading directory %q: %v", dir, err),
-				errStr: "Unable to read directory contents",
-			}.cmd
-		}
-		dirEntries := make([]string, 0)
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			dirEntries = append(dirEntries, e.Name())
-		}
-		return dirEntries
+	if len(m.dirList.Items()) == 0 {
+		m.dirList.SetShowStatusBar(false)
+	} else {
+		m.dirList.SetShowStatusBar(true)
 	}
+	return m.dirList.View()
 }
 
 func newDirList() list.Model {
@@ -186,13 +178,26 @@ func newDirList() list.Model {
 		dirItem("Riyadh"),
 	}
 	l := list.New(s, customDelegate(), 0, 0)
-	l.Title = "Directories"
+	l.Title = "Local"
 	l.SetStatusBarItemName("Dir", "Dirs")
 	l.DisableQuitKeybindings()
 
+	l.AdditionalFullHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(
+				key.WithKeys("ctrl+left", "ctrl+l"),
+				key.WithHelp("ctrl+←/ctrl+l", "out of dirAction"),
+			),
+			key.NewBinding(
+				key.WithKeys("ctrl+right", "ctrl+h"),
+				key.WithHelp("ctrl+⇾/ctrl+h", "into dirAction"),
+			),
+		}
+	}
+
 	l.Styles.Title = l.Styles.Title.
 		Background(highlightColor).
-		Foreground(bgColor).
+		Foreground(subduedGrayColor).
 		Italic(true)
 
 	l.Styles.StatusBar = l.Styles.StatusBar.
@@ -216,6 +221,8 @@ func newDirList() list.Model {
 
 	l.Styles.NoItems = l.Styles.NoItems.
 		Foreground(highlightColor).
+		PaddingLeft(2).
+		Italic(true).
 		Faint(true)
 
 	c := cursor.New()
@@ -264,9 +271,36 @@ func customDelegate() list.ItemDelegate {
 }
 
 func (m *dirListModel) updateDimensions() {
-	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize())
-	m.dirList.SetHeight(h - 1)
-	m.dirList.SetWidth(smallContainerW())
+	// +1 for some buggy behaviour of pagination when transitioning from filtering to normal list after hitting esc
+	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize() + 1)
+	w := smallContainerW() - sendContainerStyle.GetHorizontalFrameSize()
+	m.dirList.SetSize(w, h)
+}
+
+func (dirListModel) readDir(dir string, action dirAction) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				return permDeniedCmd()
+			}
+			return errMsg{
+				err:    fmt.Errorf("reading directory %q: %v", dir, err),
+				errStr: "Unable to read directory contents",
+			}.cmd
+		}
+		dirEntries := make([]string, 0)
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			dirEntries = append(dirEntries, e.Name())
+		}
+		return dirEntryMsg{
+			entries: dirEntries,
+			action:  action,
+		}
+	}
 }
 
 func (m *dirListModel) populateDirList(dirs []string) tea.Cmd {
@@ -281,4 +315,39 @@ func (m *dirListModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.dirList, cmd = m.dirList.Update(msg)
 	return cmd
+}
+
+// getDirListTitle creates a simplified display title for the current directory path,
+// showing only the volume name and the final directory name. Must be called after
+// updating dirListModel.curDirPath.
+func (dirListModel) getDirListTitle(curDirPath string) string {
+	volName := filepath.VolumeName(curDirPath)
+	selDir := filepath.ToSlash(filepath.Base(curDirPath))
+	c := strings.Count(curDirPath, string(os.PathSeparator))
+	if c == 1 {
+		return fmt.Sprintf("%s%s", volName, selDir)
+	}
+	if selDir == "/" {
+		return fmt.Sprintf("%s%s", volName, selDir)
+	}
+	return fmt.Sprintf("%s/…/%s", volName, selDir)
+}
+
+func (m dirListModel) getCurDirPath(da dirAction) string {
+	switch da {
+	case in:
+		selDir := m.dirList.SelectedItem().FilterValue()
+		return filepath.Join(m.curDirPath, selDir)
+	case out:
+		return filepath.Dir(m.curDirPath)
+	default:
+		return ""
+	}
+}
+
+func (m *dirListModel) createDirListStatusMsg(s string) tea.Cmd {
+	style := lipgloss.NewStyle().
+		Foreground(redBrightColor).
+		Italic(true)
+	return m.dirList.NewStatusMessage(style.Render(s))
 }

@@ -10,3 +10,7 @@ type errMsg struct {
 }
 
 func (em errMsg) cmd() tea.Msg { return em }
+
+type permDeniedMsg struct{}
+
+func permDeniedCmd() tea.Msg { return permDeniedMsg{} }
