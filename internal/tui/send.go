@@ -1,9 +1,11 @@
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 type sendModel struct {
-	dtm dirTreeModel
+	dtm dirListModel
 }
 
 func initialSendModel() sendModel {
@@ -20,5 +22,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 }
 
 func (m sendModel) View() string {
-	return m.dtm.View()
+	s := sendContainerStyle.
+		Height(termH - mainContainerStyle.GetVerticalFrameSize()).
+		Width(smallContainerW())
+	return s.Render(m.dtm.View())
 }
