@@ -9,7 +9,7 @@ type sendModel struct {
 }
 
 func initialSendModel() sendModel {
-	return sendModel{dtm: initialDirTreeModel()}
+	return sendModel{dtm: initialDirListModel()}
 }
 func (m sendModel) Init() tea.Cmd {
 	return tea.Batch(m.dtm.Init())
