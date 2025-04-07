@@ -16,3 +16,7 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 func (m receiveModel) View() string {
 	return ""
 }
+
+func (m *receiveModel) updateDimensions() {
+
+}

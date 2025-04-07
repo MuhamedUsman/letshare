@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"io/fs"
 	"log"
 	"os"
@@ -48,6 +49,7 @@ type dirListModel struct {
 	// directory List: children dirs in a parent dirAction
 	dirList    list.Model
 	curDirPath string
+	showHelp   bool
 }
 
 func initialDirListModel() dirListModel {
@@ -73,6 +75,7 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
+
 		case "enter":
 			if m.dirList.SelectedItem() != nil {
 				selDir := m.dirList.SelectedItem().FilterValue()
@@ -84,13 +87,14 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 			if m.dirList.FilterState() == list.Unfiltered {
 				dirOut := filepath.Dir(m.curDirPath) // Dir out
 				if m.curDirPath == dirOut {
-					return m, m.createDirListStatusMsg("It's the top!")
+					return m, m.createDirListStatusMsg("Drive Root!", highlightColor)
 				}
 				return m, m.readDir(dirOut, out)
 			}
 
-		case "/":
-			m.dirList.SetDelegate(customDelegate())
+		case "?":
+			m.showHelp = !m.showHelp
+			m.updateDimensions()
 
 		}
 
@@ -103,13 +107,12 @@ func (m dirListModel) Update(msg tea.Msg) (dirListModel, tea.Cmd) {
 		return m, m.populateDirList(msg.entries)
 
 	case permDeniedMsg:
-		return m, m.createDirListStatusMsg("Perm Denied!")
+		return m, m.createDirListStatusMsg("Perm Denied!", redBrightColor)
 
 	case errMsg:
 		log.Fatal(msg)
 
 	}
-
 	return m, m.handleDirListUpdate(msg)
 }
 
@@ -119,16 +122,24 @@ func (m dirListModel) View() string {
 	} else {
 		m.dirList.SetShowStatusBar(true)
 	}
-	return m.dirList.View()
+	ht := customDirListHelpTable(m.showHelp).Width(m.dirList.Width())
+	return lipgloss.JoinVertical(lipgloss.Left, m.dirList.View(), ht.Render())
 }
 
 func newDirList() list.Model {
 	l := list.New(nil, customDelegate(), 0, 0)
-	l.Title = "Local"
+	l.Title = "Local Space"
 	l.SetStatusBarItemName("Dir", "Dirs")
 	l.DisableQuitKeybindings()
-
+	//l.SetShowPagination(false)
+	l.SetShowHelp(false)
 	l.AdditionalFullHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "files")),
+			key.NewBinding(key.WithKeys("backspace"), key.WithHelp("b-space", "dir up")),
+		}
+	}
+	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "files")),
 			key.NewBinding(key.WithKeys("backspace"), key.WithHelp("b-space", "dir up")),
@@ -136,6 +147,8 @@ func newDirList() list.Model {
 	}
 
 	l.Help.Styles = customDirListHelpStyles(l.Help.Styles)
+
+	l.Styles.HelpStyle = l.Styles.HelpStyle.Padding(1, 0, 0, 1)
 
 	l.Styles.Title = l.Styles.Title.
 		Background(highlightColor).
@@ -222,9 +235,44 @@ func customDelegate() list.ItemDelegate {
 	return d
 }
 
+func customDirListHelpTable(show bool) *table.Table {
+	baseStyle := lipgloss.NewStyle().Margin(0, 1)
+	var rows [][]string
+	if !show {
+		rows = [][]string{{"?", "help"}}
+	} else {
+		rows = [][]string{
+			{"/", "filter"},
+			{"space", "show dir"},
+			{"enter", "dir in"},
+			{"backspace", "dir out"},
+			{"←||→", "shuffle pages"},
+			{"esc", "exit filtering"},
+			{"?", "hide help"},
+		}
+	}
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderBottom(false).
+		Wrap(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			switch col {
+			case 0:
+				return baseStyle.Foreground(highlightColor).Faint(true) // key style
+			case 1:
+				return baseStyle.Foreground(subduedHighlightColor) // desc style
+			default:
+				return lipgloss.Style{}
+			}
+		}).Rows(rows...)
+
+}
+
 func (m *dirListModel) updateDimensions() {
-	// +1 for some buggy behaviour of pagination when transitioning from filtering to normal list after hitting esc
-	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize())
+	// sub '1' height for some buggy behaviour of pagination when transitioning from filtering to normal list state,
+	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
+	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
+	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
 	w := smallContainerW() - sendContainerStyle.GetHorizontalFrameSize()
 	m.dirList.SetSize(w, h)
 }
@@ -297,9 +345,9 @@ func (m dirListModel) getCurDirPath(da dirAction) string {
 	}
 }
 
-func (m *dirListModel) createDirListStatusMsg(s string) tea.Cmd {
+func (m *dirListModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) tea.Cmd {
 	style := lipgloss.NewStyle().
-		Foreground(redBrightColor).
+		Foreground(c).
 		Italic(true)
 	return m.dirList.NewStatusMessage(style.Render(s))
 }
