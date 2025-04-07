@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"log"
 )
 
 type sendModel struct {
@@ -22,6 +23,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 }
 
 func (m sendModel) View() string {
+	sendHeight := termH - mainContainerStyle.GetVerticalFrameSize()
+	log.Println("Send Height: ", sendHeight)
 	s := sendContainerStyle.
 		Height(termH - mainContainerStyle.GetVerticalFrameSize()).
 		Width(smallContainerW())

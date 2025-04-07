@@ -25,12 +25,12 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 var ( // Container width calculations
 
 	smallContainerW = func() int {
-		w := float64(termW*28) / 100
+		w := float64(termW*25) / 100
 		return int(math.RoundToEven(w))
 	}
 
 	largeContainerW = func() int {
-		return termW - (smallContainerW() + mainContainerStyle.GetHorizontalFrameSize())
+		return termW - (smallContainerW()*2 + mainContainerStyle.GetHorizontalFrameSize())
 	}
 )
 
@@ -44,11 +44,14 @@ var ( // mainModel Styles
 var ( // sendModel Styles
 
 	sendContainerStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(subduedGrayColor).
+		/*Border(lipgloss.NormalBorder(), false, true, false, false).
+		BorderForeground(subduedGrayColor).*/
 		Padding(1, 1)
 )
 
 var ( // infoModel Styles
-
+	infoContainerStyle = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, true).
+		BorderForeground(subduedGrayColor).
+		Padding(1, 1)
 )

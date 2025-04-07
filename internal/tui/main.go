@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type focus int
@@ -22,18 +23,20 @@ var (
 
 type MainModel struct {
 	send    sendModel
-	receive receiveModel
 	info    infoModel
+	receive receiveModel
 }
 
 func InitialMainModel() MainModel {
 	return MainModel{
-		send: initialSendModel(),
+		send:    initialSendModel(),
+		info:    infoModel{},
+		receive: receiveModel{},
 	}
 }
 
 func (m MainModel) Init() tea.Cmd {
-	return tea.Batch(m.send.Init())
+	return tea.Batch(m.send.Init(), m.info.Init(), m.receive.Init())
 }
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -56,11 +59,8 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	subW := mainContainerStyle.GetHorizontalFrameSize()
 	subH := mainContainerStyle.GetVerticalFrameSize()
-	c := mainContainerStyle.
-		Width(termW - subW).
-		Height(termH - subH).
-		Render(m.send.View())
-	return c
+	c := lipgloss.JoinHorizontal(lipgloss.Center, m.send.View(), m.info.View(), m.receive.View())
+	return mainContainerStyle.Width(termW - subW).Height(termH - subH).Render(c)
 }
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {

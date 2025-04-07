@@ -14,5 +14,12 @@ func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
 }
 
 func (m infoModel) View() string {
-	return ""
+	return infoContainerStyle.
+		Width(largeContainerW()).
+		Height(termH - (mainContainerStyle.GetVerticalFrameSize())).
+		Render()
+}
+
+func (m infoModel) updateDimensions() {
+
 }
