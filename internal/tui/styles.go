@@ -44,9 +44,7 @@ var ( // mainModel Styles
 var ( // sendModel Styles
 
 	sendContainerStyle = lipgloss.NewStyle().
-		/*Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(subduedGrayColor).*/
-		Padding(1, 1)
+		Margin(1, 1, 0, 1)
 )
 
 var ( // infoModel Styles

@@ -59,7 +59,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	subW := mainContainerStyle.GetHorizontalFrameSize()
 	subH := mainContainerStyle.GetVerticalFrameSize()
-	c := lipgloss.JoinHorizontal(lipgloss.Center, m.send.View(), m.info.View(), m.receive.View())
+	c := lipgloss.JoinHorizontal(lipgloss.Top, m.send.View(), m.info.View(), m.receive.View())
 	return mainContainerStyle.Width(termW - subW).Height(termH - subH).Render(c)
 }
 
