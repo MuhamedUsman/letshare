@@ -30,7 +30,7 @@ type MainModel struct {
 func InitialMainModel() MainModel {
 	return MainModel{
 		send:    initialSendModel(),
-		info:    infoModel{},
+		info:    initialInfoModel(),
 		receive: receiveModel{},
 	}
 }

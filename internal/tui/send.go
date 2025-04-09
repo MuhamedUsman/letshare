@@ -77,7 +77,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		switch msg.String() {
 
 		case "enter":
-			if m.dirList.SelectedItem() != nil {
+			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
 				selDir := m.dirList.SelectedItem().FilterValue()
 				selDir = filepath.Join(m.curDirPath, selDir) // Dir in
 				return m, m.readDir(selDir, in)
@@ -132,20 +132,11 @@ func newDirList() list.Model {
 	l.Title = "Local Space"
 	l.SetStatusBarItemName("Dir", "Dirs")
 	l.DisableQuitKeybindings()
-	//l.SetShowPagination(false)
 	l.SetShowHelp(false)
-	l.AdditionalFullHelpKeys = func() []key.Binding {
-		return []key.Binding{
-			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "files")),
-			key.NewBinding(key.WithKeys("backspace"), key.WithHelp("b-space", "dir up")),
-		}
-	}
-	l.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{
-			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "files")),
-			key.NewBinding(key.WithKeys("backspace"), key.WithHelp("b-space", "dir up")),
-		}
-	}
+
+	b := []key.Binding{key.NewBinding(key.WithKeys("space")), key.NewBinding(key.WithKeys("backspace"))}
+	l.AdditionalFullHelpKeys = func() []key.Binding { return b }
+	l.AdditionalShortHelpKeys = func() []key.Binding { return b }
 
 	l.Help.Styles = customDirListHelpStyles(l.Help.Styles)
 
@@ -216,8 +207,7 @@ func customDelegate() list.ItemDelegate {
 	d.SetHeight(2)
 
 	d.Styles.NormalTitle = d.Styles.NormalTitle.
-		Foreground(highlightColor).
-		Faint(true)
+		Foreground(midHighlightColor)
 
 	d.Styles.SelectedTitle = d.Styles.SelectedTitle.
 		Foreground(highlightColor).
@@ -227,8 +217,7 @@ func customDelegate() list.ItemDelegate {
 		Italic(true)
 
 	d.Styles.DimmedTitle = d.Styles.DimmedTitle.
-		Foreground(highlightColor).
-		Faint(true)
+		Foreground(midHighlightColor)
 
 	d.Styles.FilterMatch = d.Styles.FilterMatch.
 		Foreground(highlightColor)
