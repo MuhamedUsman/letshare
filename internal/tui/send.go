@@ -19,38 +19,81 @@ import (
 	"strings"
 )
 
+// dirAction represents a directory navigation action type.
 type dirAction = int
 
 const (
+	// No operation to perform
 	noop dirAction = iota
+	// Navigate into a directory
 	in
+	// Navigate out of a directory
 	out
 )
 
+// dirEntryMsg is a message containing directory entries and the associated action.
 type dirEntryMsg struct {
+	// List of directory names
 	entries []string
-	action  dirAction
+	// Navigation action performed
+	action dirAction
 }
 
+// itemSelectionStack tracks selected indices when navigating directories.
+type itemSelectionStack struct {
+	// Internal array storing indices
+	selIndexes []int
+	// Adds an index to the stack
+	push func(int)
+	// Removes and returns the last index, or -1 if empty
+	pop func() int
+}
+
+// newItemSelectionStack creates a new selection stack for tracking directory navigation.
+func newItemSelectionStack() itemSelectionStack {
+	selIndexes := make([]int, 0)
+	return itemSelectionStack{
+		selIndexes: selIndexes,
+		push:       func(i int) { selIndexes = append(selIndexes, i) },
+		pop: func() int {
+			if len(selIndexes) == 0 {
+				return -1
+			}
+			ret := selIndexes[len(selIndexes)-1]
+			selIndexes = selIndexes[:len(selIndexes)-1]
+			return ret
+		},
+	}
+}
+
+// dirItem implements the list item interface for directories.
 type dirItem string
 
+// FilterValue returns the directory name for filtering purposes.
 func (i dirItem) FilterValue() string {
 	return string(i)
 }
 
+// Title returns the directory name for display.
 func (i dirItem) Title() string {
 	return string(i)
 }
 
+// Description is noop, just to satisfy internal interface
 func (i dirItem) Description() string {
 	return ""
 }
 
+// sendModel is the main model for the directory navigation view.
 type sendModel struct {
 	// directory List: children dirs in a parent dirAction
-	dirList    list.Model
+	dirList list.Model
+	// Current directory path
 	curDirPath string
-	showHelp   bool
+	// Toggle for help display
+	showHelp bool
+	// Tracks position when navigating directories
+	prevSelectedStack itemSelectionStack
 }
 
 func initialSendModel() sendModel {
@@ -59,8 +102,9 @@ func initialSendModel() sendModel {
 		wd = "."
 	}
 	return sendModel{
-		curDirPath: wd,
-		dirList:    newDirList(),
+		curDirPath:        wd,
+		dirList:           newDirList(),
+		prevSelectedStack: newItemSelectionStack(),
 	}
 }
 
@@ -115,8 +159,19 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		if msg.action != noop {
 			m.curDirPath = m.getCurDirPath(msg.action)
 			m.dirList.Title = m.getDirListTitle(m.curDirPath)
+			if msg.action == in {
+				m.prevSelectedStack.push(m.dirList.Index())
+				m.dirList.ResetSelected()
+			}
+			if msg.action == out {
+				prevIndex := m.prevSelectedStack.pop()
+				if prevIndex == -1 {
+					m.dirList.ResetSelected()
+				} else {
+					m.dirList.Select(prevIndex)
+				}
+			}
 		}
-		m.dirList.ResetSelected()
 		return m, m.populateDirList(msg.entries)
 
 	case fsErrMsg:
@@ -346,6 +401,7 @@ func (sendModel) getDirListTitle(curDirPath string) string {
 	return fmt.Sprintf("%s/…/%s", volName, selDir)
 }
 
+// getCurDirPath gets the target path based on the navigation action.
 func (m sendModel) getCurDirPath(da dirAction) string {
 	switch da {
 	case in:
