@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	"github.com/charmbracelet/lipgloss"
 	"math"
 )
@@ -33,6 +34,27 @@ var ( // Container width calculations
 	largeContainerW = func() int {
 		return termW - (smallContainerW()*2 + mainContainerStyle.GetHorizontalFrameSize())
 	}
+
+	infoContainerWorkableH = func() int {
+		h := mainContainerStyle.GetVerticalFrameSize() +
+			infoContainerStyle.GetVerticalFrameSize() +
+			titleStyle.GetVerticalFrameSize() +
+			lipgloss.Height(titleStyle.Render())
+		return termH - h
+	}
+)
+
+var ( // Common Styles
+
+	titleStyle = lipgloss.NewStyle().
+			Background(subduedGrayColor).
+			Foreground(highlightColor).
+			Italic(true).
+			Padding(0, 1).
+			MarginBottom(1)
+
+	smallContainerStyle = lipgloss.NewStyle().
+				Margin(1, 1, 0, 1)
 )
 
 var ( // mainModel Styles
@@ -44,20 +66,53 @@ var ( // mainModel Styles
 
 var ( // sendModel Styles
 
-	sendContainerStyle = lipgloss.NewStyle().
-		Margin(1, 1, 0, 1)
 )
 
 var ( // infoModel Styles
+
 	infoContainerStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, true).
-		BorderForeground(subduedHighlightColor).
-		AlignHorizontal(lipgloss.Center).
-		Padding(1, 0)
+				Border(lipgloss.NormalBorder(), false, true).
+				BorderForeground(subduedHighlightColor).
+				AlignHorizontal(lipgloss.Center).
+				Padding(1, 0)
+
+	banner = lipgloss.NewStyle().
+		Foreground(midHighlightColor).
+		AlignVertical(lipgloss.Center).
+		SetString(bannerTxt)
+
+	slogan = lipgloss.NewStyle().
+		Italic(true).
+		Foreground(highlightColor).
+		Faint(true).
+		SetString("with Freedom!")
+
+	bannerTxt = `
+┬  ┌─┐┌┬┐┌─┐┬ ┬┌─┐┬─┐┌─┐
+│  ├┤  │ └─┐├─┤├─┤├┬┘├┤ 
+┴─┘└─┘ ┴ └─┘┴ ┴┴ ┴┴└─└─┘
+           ` + slogan.Render()
 )
 
 var ( // sendInfoModel Styles
-	tableBaseStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), true, false).
-		BorderForeground(subduedHighlightColor)
+
+	customTableStyles = table.Styles{
+		Header: table.DefaultStyles().Header.
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderTop(true).
+			Foreground(highlightColor).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(subduedHighlightColor).
+			BorderBottom(true),
+		Selected: table.DefaultStyles().Selected.
+			Background(subduedHighlightColor).
+			Foreground(highlightColor).
+			Italic(true).
+			Bold(true),
+		Cell: table.DefaultStyles().Cell.Foreground(midHighlightColor),
+	}
+)
+
+var ( // receiveModel Styles
+
 )
