@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"log/slog"
-	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,7 +17,6 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -247,11 +245,7 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			}
 			var finfo os.FileInfo
 			finfo, err = entry.Info()
-			ext := path.Ext(entry.Name())
-			fileType := mime.TypeByExtension(ext)
-			if fileType == "" {
-				fileType = strings.TrimPrefix(ext, ".")
-			}
+			fileType := util.GetFileType(entry.Name())
 			fsInfo := domain.FileInfo{
 				Name:    entry.Name(),
 				Path:    path.Join("/", url.PathEscape(entry.Name())),

@@ -5,20 +5,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type focus int
+type focusedTab int
 
 const (
-	// No focus
-	blur focus = iota - 1
-	main
+	// No focusedTab
+	blur focusedTab = iota
 	send
-	receive
 	info
+	receive
 )
 
 var (
-	termW, termH int
-	curFocus     focus
+	termW, termH              int
+	currentFocus, extendSpace focusedTab
 )
 
 type MainModel struct {
@@ -31,11 +30,12 @@ func InitialMainModel() MainModel {
 	return MainModel{
 		send:    initialSendModel(),
 		info:    initialInfoModel(),
-		receive: receiveModel{},
+		receive: initialReceiveModel(),
 	}
 }
 
 func (m MainModel) Init() tea.Cmd {
+	currentFocus = send
 	return tea.Batch(m.send.Init(), m.info.Init(), m.receive.Init())
 }
 
@@ -48,8 +48,23 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
+
+		case "ctrl+slogan":
 			return m, tea.Quit
+
+		case "tab":
+			// loop currentFocus & extendSpace b/w send, info & receive tabs
+			currentFocus++
+			if currentFocus > receive {
+				currentFocus = send
+			}
+
+		case "shift+tab":
+			currentFocus--
+			if currentFocus < send {
+				currentFocus = receive
+
+			}
 		}
 	}
 

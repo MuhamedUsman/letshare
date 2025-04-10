@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/mattn/go-runewidth"
 	"io/fs"
 	"log"
 	"os"
@@ -74,28 +75,40 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-		switch msg.String() {
+		if currentFocus == send {
+			m.setTitleStylesAsFocus()
+			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
+			switch msg.String() {
 
-		case "enter":
-			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
-				selDir := m.dirList.SelectedItem().FilterValue()
-				selDir = filepath.Join(m.curDirPath, selDir) // Dir in
-				return m, m.readDir(selDir, in)
-			}
-
-		case "backspace":
-			if m.dirList.FilterState() == list.Unfiltered {
-				dirOut := filepath.Dir(m.curDirPath) // Dir out
-				if m.curDirPath == dirOut {
-					return m, m.createDirListStatusMsg("Drive Root!", highlightColor)
+			case "enter":
+				if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
+					selDir := m.dirList.SelectedItem().FilterValue()
+					selDir = filepath.Join(m.curDirPath, selDir) // Dir in
+					return m, m.readDir(selDir, in)
 				}
-				return m, m.readDir(dirOut, out)
+
+			case "backspace":
+				if m.dirList.FilterState() == list.Unfiltered {
+					dirOut := filepath.Dir(m.curDirPath) // Dir out
+					if m.curDirPath == dirOut {
+						return m, m.createDirListStatusMsg("Drive Root!", highlightColor)
+					}
+					return m, m.readDir(dirOut, out)
+				}
+
+			case "space":
+				selPath := m.dirList.SelectedItem().FilterValue()
+				selPath = filepath.Join(m.curDirPath, selPath)
+				return m, extentDirMsg(selPath).cmd
+
+			case "?":
+				m.showHelp = !m.showHelp
+				m.updateDimensions()
+
 			}
-
-		case "?":
-			m.showHelp = !m.showHelp
-			m.updateDimensions()
-
+		} else {
+			m.setTitleStylesAsFocus()
+			m.dirList.KeyMap = list.KeyMap{} // disable list keymap
 		}
 
 	case dirEntryMsg:
@@ -106,8 +119,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.dirList.ResetSelected()
 		return m, m.populateDirList(msg.entries)
 
-	case permDeniedMsg:
-		return m, m.createDirListStatusMsg("Perm Denied!", redBrightColor)
+	case fsErrMsg:
+		return m, m.createDirListStatusMsg(string(msg), redBrightColor)
 
 	case errMsg:
 		log.Fatal(msg)
@@ -123,8 +136,12 @@ func (m sendModel) View() string {
 		m.dirList.SetShowStatusBar(true)
 	}
 	ht := customDirListHelpTable(m.showHelp).Width(m.dirList.Width())
+	tail := "..."
+	subW := m.dirList.Styles.TitleBar.GetHorizontalFrameSize() // subtract Width
+	subW += lipgloss.Width(tail)
+	m.dirList.Title = runewidth.Truncate(m.dirList.Title, m.dirList.Width()-subW, "...")
 	s := lipgloss.JoinVertical(lipgloss.Top, m.dirList.View(), ht.Render())
-	return sendContainerStyle.Render(s)
+	return smallContainerStyle.Render(s)
 }
 
 func newDirList() list.Model {
@@ -144,7 +161,7 @@ func newDirList() list.Model {
 
 	l.Styles.Title = l.Styles.Title.
 		Background(highlightColor).
-		Foreground(subduedGrayColor).
+		Foreground(subduedHighlightColor).
 		Italic(true)
 
 	l.Styles.StatusBar = l.Styles.StatusBar.
@@ -233,7 +250,7 @@ func customDirListHelpTable(show bool) *table.Table {
 	} else {
 		rows = [][]string{
 			{"/", "filter"},
-			{"space", "show dir"},
+			{"space", "extend directory"},
 			{"enter", "into directory"},
 			{"backspace", "out of directory"},
 			{"←||→", "shuffle pages"},
@@ -262,9 +279,12 @@ func (m *sendModel) updateDimensions() {
 	// sub '1' height for some buggy behaviour of pagination when transitioning from filtering to normal list state,
 	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
-	h := termH - (mainContainerStyle.GetVerticalFrameSize() + sendContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
-	w := smallContainerW() - sendContainerStyle.GetHorizontalFrameSize()
+	h := termH - (mainContainerStyle.GetVerticalFrameSize() + smallContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
+	w := smallContainerW() - smallContainerStyle.GetHorizontalFrameSize()
 	m.dirList.SetSize(w, h)
+	// the width of titleBar gets +1 when the title txt overflows so explicitly constraining it
+	w = w - m.dirList.Styles.TitleBar.GetHorizontalFrameSize()
+	m.dirList.Styles.TitleBar = m.dirList.Styles.TitleBar.MaxWidth(w)
 }
 
 func (sendModel) readDir(dir string, action dirAction) tea.Cmd {
@@ -272,7 +292,10 @@ func (sendModel) readDir(dir string, action dirAction) tea.Cmd {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
-				return permDeniedCmd()
+				return fsErrMsg("Perm Denied!")
+			}
+			if errors.Is(err, fs.ErrNotExist) {
+				return fsErrMsg("No such dir!")
 			}
 			return errMsg{
 				err:    fmt.Errorf("reading directory %q: %v", dir, err),
@@ -340,4 +363,16 @@ func (m *sendModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) t
 		Foreground(c).
 		Italic(true)
 	return m.dirList.NewStatusMessage(style.Render(s))
+}
+
+func (m *sendModel) setTitleStylesAsFocus() {
+	s := m.dirList.Styles.Title.
+		Background(subduedGrayColor).
+		Foreground(highlightColor)
+	if currentFocus == send {
+		s = m.dirList.Styles.Title.
+			Background(highlightColor).
+			Foreground(subduedHighlightColor)
+	}
+	m.dirList.Styles.Title = s
 }

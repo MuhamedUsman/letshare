@@ -3,8 +3,6 @@ package tui
 import (
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"math"
 )
 
 type sendInfoModel struct {
@@ -12,50 +10,29 @@ type sendInfoModel struct {
 }
 
 func initialSendInfoModel() sendInfoModel {
-	t := table.New(table.WithFocused(true))
-	s := table.DefaultStyles()
-	t.SetStyles(table.Styles{
-		Header: s.Header.
-			Foreground(highlightColor).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(subduedHighlightColor).
-			BorderBottom(true),
-		Selected: s.Selected.
-			Background(subduedHighlightColor).
-			Foreground(highlightColor).
-			Italic(true).
-			Bold(true),
-		Cell: s.Cell.Foreground(midHighlightColor),
-	})
 	r := []table.Row{
 		{"File One", "PDF", "10MB"},
 		{"File Two", "MP4", "500MB"},
 		{"File Three", "JPEG", "2.5MB"},
 	}
-	t.SetColumns(getTableCols(0))
-	t.SetRows(r)
+	t := table.New(
+		table.WithStyles(customTableStyles),
+		table.WithColumns(getTableCols(0)),
+		table.WithRows(r),
+	)
 	return sendInfoModel{infoTable: t}
 }
 
 func getTableCols(tableWidth int) []table.Column {
-	/*nameSpace, typeSpace, sizeSpace := 50, 21, 21
-	nameW := (tableWidth * nameSpace) / 100
-	typeW := (tableWidth * typeSpace) / 100
-	sizeW := (tableWidth * sizeSpace) / 100
+	cols := []string{"Name", "Type", "Size"}
+	subW := customTableStyles.Cell.GetHorizontalFrameSize() * len(cols)
+	tableWidth = tableWidth - subW
+	smallCellW := (tableWidth * 20) / 100
+	largeCellW := tableWidth - smallCellW*2
 	return []table.Column{
-		{"Name", nameW},
-		{"Type", typeW},
-		{"Size", sizeW},
-	}*/
-	tableWidth = tableWidth - 5
-	nameCellW := (tableWidth * 60) / 100
-	widthLeft := tableWidth - nameCellW
-	typeCellW := int(math.Round(float64(widthLeft / 2)))
-	sizeCellW := int(math.Round(float64(widthLeft / 2)))
-	return []table.Column{
-		{"Name", nameCellW},
-		{"Type", typeCellW},
-		{"Size", sizeCellW},
+		{cols[0], largeCellW},
+		{cols[1], smallCellW},
+		{cols[2], smallCellW},
 	}
 }
 
@@ -64,6 +41,7 @@ func (m sendInfoModel) Init() tea.Cmd {
 }
 
 func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
+
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -72,20 +50,29 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
+		case "tab", "shift+tab":
+			if currentFocus == info && extendSpace == send {
+				m.infoTable.Focus()
+			} else {
+				m.infoTable.Blur()
+			}
+
 		}
+
+	case extentDirMsg:
+
 	}
 	return m, m.handleInfoTableUpdate(msg)
 }
 
 func (m sendInfoModel) View() string {
-	return tableBaseStyle.Render(m.infoTable.View())
+	return m.infoTable.View()
 }
 
 func (m *sendInfoModel) updateDimensions() {
-	w := largeContainerW() - infoContainerStyle.GetHorizontalFrameSize()
-	h := termH - (mainContainerStyle.GetVerticalFrameSize() + infoContainerStyle.GetVerticalFrameSize())
+	w := largeContainerW() - (infoContainerStyle.GetHorizontalFrameSize())
 	m.infoTable.SetWidth(w)
-	m.infoTable.SetHeight(h - 2)
+	m.infoTable.SetHeight(infoContainerWorkableH())
 	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
 }
 
@@ -95,9 +82,23 @@ func (m *sendInfoModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func applyCellStyle(cell string) string {
-	return lipgloss.NewStyle().
-		Foreground(highlightColor).
-		Faint(true).
-		Render(cell)
-}
+/*func (sendInfoModel) readDir(path string) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			if err != nil {
+				if errors.Is(err, fs.ErrPermission) {
+					return fsErrMsg("Perm denied!")
+				}
+				if errors.Is(err, fs.ErrNotExist) {
+					return fsErrMsg("No such dir!")
+				}
+				return errMsg{
+					err:    fmt.Errorf("reading directory %q: %v", path, err),
+					errStr: "Unable to read directory contents",
+				}.cmd
+			}
+		}
+
+	}
+}*/
