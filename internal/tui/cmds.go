@@ -9,8 +9,12 @@ type errMsg struct {
 	errStr string
 }
 
-func (em errMsg) cmd() tea.Msg { return em }
+func (msg errMsg) cmd() tea.Msg { return msg }
 
-type permDeniedMsg struct{}
+type fsErrMsg string
 
-func permDeniedCmd() tea.Msg { return permDeniedMsg{} }
+func (msg fsErrMsg) cmd() tea.Msg { return msg }
+
+type extentDirMsg string
+
+func (msg extentDirMsg) cmd() tea.Msg { return msg }
