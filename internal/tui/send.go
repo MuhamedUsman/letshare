@@ -113,6 +113,7 @@ func (m sendModel) Init() tea.Cmd {
 }
 
 func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
+
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -120,8 +121,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if currentFocus == send {
-			m.setTitleStylesAsFocus()
-			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
 			switch msg.String() {
 
 			case "enter":
@@ -140,19 +139,21 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 					return m, m.readDir(dirOut, out)
 				}
 
-			case "space":
+			case " ": // space
 				selPath := m.dirList.SelectedItem().FilterValue()
 				selPath = filepath.Join(m.curDirPath, selPath)
-				return m, extentDirMsg(selPath).cmd
+				return m, extendDirMsg{selPath, false}.cmd
+
+			case "ctrl+e":
+				selPath := m.dirList.SelectedItem().FilterValue()
+				selPath = filepath.Join(m.curDirPath, selPath)
+				return m, extendDirMsg{selPath, true}.cmd
 
 			case "?":
 				m.showHelp = !m.showHelp
 				m.updateDimensions()
 
 			}
-		} else {
-			m.setTitleStylesAsFocus()
-			m.dirList.KeyMap = list.KeyMap{} // disable list keymap
 		}
 
 	case dirEntryMsg:
@@ -172,12 +173,26 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				}
 			}
 		}
+		//  remove the applied filter at the end for UX
+		if m.dirList.IsFiltered() {
+			m.dirList.ResetFilter()
+		}
 		return m, m.populateDirList(msg.entries)
+
+	case spaceTabSwitchMsg:
+		if focusedTab(msg) == send {
+			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
+			m.dirList.DisableQuitKeybindings()
+		} else {
+			m.dirList.KeyMap = list.KeyMap{} // disable list keymap
+		}
+		m.setTitleStylesAsFocus()
 
 	case fsErrMsg:
 		return m, m.createDirListStatusMsg(string(msg), redBrightColor)
 
 	case errMsg:
+		// TODO: Do not forget such errors
 		log.Fatal(msg)
 
 	}
@@ -285,7 +300,6 @@ func customDelegate() list.ItemDelegate {
 		Foreground(highlightColor).
 		BorderStyle(lipgloss.ThickBorder()).
 		BorderForeground(highlightColor).
-		Bold(true).
 		Italic(true)
 
 	d.Styles.DimmedTitle = d.Styles.DimmedTitle.
@@ -305,9 +319,10 @@ func customDirListHelpTable(show bool) *table.Table {
 	} else {
 		rows = [][]string{
 			{"/", "filter"},
-			{"space", "extend directory"},
-			{"enter", "into directory"},
-			{"backspace", "out of directory"},
+			{"space", "extend dir"},
+			{"ctrl+space", "extend dir focused"},
+			{"enter", "into dir"},
+			{"backspace", "out of dir"},
 			{"←||→", "shuffle pages"},
 			{"esc", "exit filtering"},
 			{"?", "hide help"},

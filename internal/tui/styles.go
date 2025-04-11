@@ -107,8 +107,7 @@ var ( // sendInfoModel Styles
 		Selected: table.DefaultStyles().Selected.
 			Background(subduedHighlightColor).
 			Foreground(highlightColor).
-			Italic(true).
-			Bold(true),
+			Italic(true),
 		Cell: table.DefaultStyles().Cell.Foreground(midHighlightColor),
 	}
 )
