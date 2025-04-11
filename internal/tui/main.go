@@ -9,15 +9,15 @@ type focusedTab int
 
 const (
 	// No focusedTab
-	blur focusedTab = iota
+	none focusedTab = iota
 	send
 	info
 	receive
 )
 
 var (
-	termW, termH              int
-	currentFocus, extendSpace focusedTab
+	termW, termH int
+	currentFocus focusedTab
 )
 
 type MainModel struct {
@@ -49,7 +49,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
-		case "ctrl+slogan":
+		case "ctrl+c":
 			return m, tea.Quit
 
 		case "tab":
@@ -58,13 +58,14 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if currentFocus > receive {
 				currentFocus = send
 			}
+			return m, spaceTabSwitchMsg(currentFocus).cmd
 
 		case "shift+tab":
 			currentFocus--
 			if currentFocus < send {
 				currentFocus = receive
-
 			}
+			return m, spaceTabSwitchMsg(currentFocus).cmd
 		}
 	}
 

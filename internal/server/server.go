@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -217,7 +218,7 @@ func (s *Server) Routes(dir string) http.Handler {
 //   - Name: The name of the file
 //   - Path: URL-escaped path to access the file, prefixed with "/"
 //   - Size: File size in bytes
-//   - Type: MIME type (determined by file extension) or extension name if MIME type is unknown
+//   - Extension: MIME type (determined by file extension) or extension name if MIME type is unknown
 //   - ModTime: Last modification time of the file
 //
 // If an error occurs while reading the directory or generating the JSON response,
@@ -245,13 +246,12 @@ func (s *Server) JsonFileServer(dir string) http.Handler {
 			}
 			var finfo os.FileInfo
 			finfo, err = entry.Info()
-			fileType := util.GetFileType(entry.Name())
 			fsInfo := domain.FileInfo{
-				Name:    entry.Name(),
-				Path:    path.Join("/", url.PathEscape(entry.Name())),
-				Size:    finfo.Size(),
-				Type:    fileType,
-				ModTime: finfo.ModTime(),
+				Name:      entry.Name(),
+				Path:      path.Join("/", url.PathEscape(entry.Name())),
+				Size:      finfo.Size(),
+				Extension: strings.TrimPrefix(filepath.Ext(entry.Name()), "."),
+				ModTime:   finfo.ModTime(),
 			}
 			fsInfos = append(fsInfos, fsInfo)
 		}

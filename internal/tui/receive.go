@@ -27,24 +27,24 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "tab", "shift+tab":
-			if currentFocus == receive {
-				m.titleStyle = titleStyle.
-					Background(highlightColor).
-					Foreground(subduedHighlightColor)
-			} else {
-				m.titleStyle = titleStyle.
-					Background(subduedGrayColor).
-					Foreground(highlightColor)
-			}
+
+	case spaceTabSwitchMsg:
+		if focusedTab(msg) == receive {
+			m.titleStyle = titleStyle.
+				Background(highlightColor).
+				Foreground(subduedHighlightColor)
+		} else {
+			m.titleStyle = titleStyle.
+				Background(subduedGrayColor).
+				Foreground(highlightColor)
 		}
 	}
+
 	return m, nil
 }
 
 func (m receiveModel) View() string {
-	s := m.titleStyle.Render("RemoteSpace")
+	s := m.titleStyle.Render("Remote Space")
 	s = runewidth.Truncate(s, runewidth.StringWidth(s), "…")
 	return smallContainerStyle.Render(s)
 }
