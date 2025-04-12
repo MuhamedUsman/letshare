@@ -88,8 +88,13 @@ func (i dirItem) Description() string {
 type sendModel struct {
 	// directory List: children dirs in a parent dirAction
 	dirList list.Model
-	// Current directory path
+	// current directory path
 	curDirPath string
+	// used to implement double space key action,
+	// extend directory on double space with focus.
+	// if prevSelDir == dirList.SelectedItem()
+	// the key action is valid
+	prevSelDir string
 	// Toggle for help display
 	showHelp bool
 	// Tracks position when navigating directories
@@ -140,14 +145,14 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				}
 
 			case " ": // space
-				selPath := m.dirList.SelectedItem().FilterValue()
-				selPath = filepath.Join(m.curDirPath, selPath)
+				selDir := m.dirList.SelectedItem().FilterValue()
+				selPath := filepath.Join(m.curDirPath, selDir)
+				// double space action is valid
+				if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
+					return m, extendDirMsg{selPath, true}.cmd
+				}
+				m.prevSelDir = selDir // registering first space
 				return m, extendDirMsg{selPath, false}.cmd
-
-			case "ctrl+e":
-				selPath := m.dirList.SelectedItem().FilterValue()
-				selPath = filepath.Join(m.curDirPath, selPath)
-				return m, extendDirMsg{selPath, true}.cmd
 
 			case "?":
 				m.showHelp = !m.showHelp
@@ -320,7 +325,7 @@ func customDirListHelpTable(show bool) *table.Table {
 		rows = [][]string{
 			{"/", "filter"},
 			{"space", "extend dir"},
-			{"ctrl+space", "extend dir focused"},
+			{"2x(space)", "extend dir focused"},
 			{"enter", "into dir"},
 			{"backspace", "out of dir"},
 			{"←||→", "shuffle pages"},
@@ -335,9 +340,9 @@ func customDirListHelpTable(show bool) *table.Table {
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch col {
 			case 0:
-				return baseStyle.Foreground(highlightColor).Faint(true) // key style
+				return baseStyle.Foreground(highlightColor).Align(lipgloss.Left).Faint(true) // key style
 			case 1:
-				return baseStyle.Foreground(subduedHighlightColor) // desc style
+				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
 			default:
 				return lipgloss.Style{}
 			}

@@ -6,6 +6,8 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	"github.com/MuhamedUsman/letshare/internal/util"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	lipTable "github.com/charmbracelet/lipgloss/table" // lipTable -> lipglossTable
 	"io/fs"
 	"math"
 	"os"
@@ -25,6 +27,8 @@ type sendInfoModel struct {
 	tableFocus bool
 	dirPath    string
 	dirContent []dirContent
+	// Toggle for help display
+	showHelp bool
 }
 
 func initialSendInfoModel() sendInfoModel {
@@ -70,7 +74,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
-		case "shift+down": // select row & move down
+		case "shift+down", "ctrl+down": // select row & move down
 			if m.infoTable.Focused() {
 				sel := m.infoTable.Cursor()
 				m.dirContent[sel].selection = true
@@ -78,13 +82,20 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 				m.infoTable.MoveDown(1)
 			}
 
-		case "shift+up": // undo selection & move up
+		case "shift+up", "ctrl+up": // undo selection & move up
 			if m.infoTable.Focused() {
 				sel := m.infoTable.Cursor()
 				m.dirContent[sel].selection = false
 				m.populateTable(m.dirContent)
 				m.infoTable.MoveUp(1)
 			}
+
+		case "?":
+			if m.infoTable.Focused() {
+				m.showHelp = !m.showHelp
+				m.updateDimensions()
+			}
+
 		}
 
 	case extendDirMsg:
@@ -114,13 +125,16 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 }
 
 func (m sendInfoModel) View() string {
-	return m.infoTable.View()
+	help := customInfoTableHelp(m.showHelp)
+	help.Width(m.infoTable.Width())
+	return lipgloss.JoinVertical(lipgloss.Top, m.infoTable.View(), help.Render())
 }
 
 func (m *sendInfoModel) updateDimensions() {
 	w := largeContainerW() - (infoContainerStyle.GetHorizontalFrameSize())
-	m.infoTable.SetWidth(w)
-	m.infoTable.SetHeight(infoContainerWorkableH())
+	m.infoTable.SetWidth(w + 2)
+	helpHeight := lipgloss.Height(customInfoTableHelp(m.showHelp).String())
+	m.infoTable.SetHeight(infoContainerWorkableH() - helpHeight)
 	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
 }
 
@@ -179,4 +193,38 @@ func (m *sendInfoModel) populateTable(msg dirContentsMsg) {
 		rows[i] = table.Row{sel, content.name, content.ext, content.size}
 	}
 	m.infoTable.SetRows(rows)
+}
+
+func customInfoTableHelp(show bool) *lipTable.Table {
+	baseStyle := lipgloss.NewStyle().Margin(0, 2)
+	var rows [][]string
+	if !show {
+		rows = [][]string{{"?", "help"}}
+	} else {
+		rows = [][]string{
+			{"shift+↓/ctrl+↓", "make selection"},
+			{"shift+↑/ctrl+↑", "undo selection"},
+			{"b/pgup", "page up"},
+			{"f/space", "page down"},
+			{"g/home", "go to start"},
+			{"G/end", "go to end"},
+			{"?", "hide help"},
+		}
+	}
+	return lipTable.New().
+		Border(lipgloss.HiddenBorder()).
+		//BorderTop(false).
+		BorderBottom(false).
+		Wrap(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			switch col {
+			case 0:
+				return baseStyle.Foreground(highlightColor).Align(lipgloss.Left).Faint(true) // key style
+			case 1:
+				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
+			default:
+				return baseStyle
+			}
+		}).Rows(rows...)
+
 }
