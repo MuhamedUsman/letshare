@@ -13,7 +13,7 @@ func main() {
 
 	slg := slog.New(tint.NewHandler(os.Stderr, nil))
 
-	f, err := tea.LogToFile("Letschat.log", "Letschat")
+	f, err := tea.LogToFile("Letshare.log", "Letshare")
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{AddSource: true})))
 	if err != nil {
