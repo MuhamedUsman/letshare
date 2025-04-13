@@ -10,6 +10,7 @@ type infoModel struct {
 	titleStyle    lipgloss.Style
 	extendedSpace focusedTab
 	dirToExtend   string
+	hideTitle     bool
 }
 
 func initialInfoModel() infoModel {
@@ -52,13 +53,16 @@ func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
 			m.updateTitleStyleAsFocus(false)
 		}
 
+	case hideInfoSpaceTitle:
+		m.hideTitle = bool(msg)
+
 	}
 	return m, m.handleInfoModelUpdate(msg)
 }
 
 func (m infoModel) View() string {
 	title := "Home Space"
-	infoContent := banner.Height(infoContainerWorkableH()).Render()
+	infoContent := banner.Height(infoContainerWorkableH(!m.hideTitle)).Render() // !m.hideTitle == showTitle
 	if m.extendedSpace == send {
 		title = "Extended Local Space"
 		infoContent = m.sendInfo.View()
@@ -68,10 +72,13 @@ func (m infoModel) View() string {
 		infoContent = ""
 	}
 	title = m.titleStyle.Render(title)
-	return infoContainerStyle.
+	style := infoContainerStyle.
 		Width(largeContainerW()).
-		Height(termH-(mainContainerStyle.GetVerticalFrameSize())).
-		Render(title, infoContent)
+		Height(termH - (mainContainerStyle.GetVerticalFrameSize()))
+	if m.hideTitle {
+		return style.Render(infoContent)
+	}
+	return style.Render(title, infoContent)
 }
 
 func (m *infoModel) handleInfoModelUpdate(msg tea.Msg) tea.Cmd {

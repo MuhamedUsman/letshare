@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	"github.com/MuhamedUsman/letshare/internal/util"
+	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table" // lipTable -> lipglossTable
@@ -23,10 +25,11 @@ type dirContent struct {
 type dirContentsMsg = []dirContent
 
 type sendInfoModel struct {
-	infoTable  table.Model
-	tableFocus bool
-	dirPath    string
-	dirContent []dirContent
+	infoTable     table.Model
+	filter        textinput.Model
+	focusOnExtend bool
+	dirPath       string
+	dirContent    []dirContent
 	// Toggle for help display
 	showHelp bool
 }
@@ -36,7 +39,7 @@ func initialSendInfoModel() sendInfoModel {
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
 	)
-	return sendInfoModel{infoTable: t}
+	return sendInfoModel{infoTable: t, filter: newFilterInputModel()}
 }
 
 func getTableCols(tableWidth int) []table.Column {
@@ -72,69 +75,69 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-		switch msg.String() {
 
-		case "enter":
-			if m.infoTable.Focused() {
+		// exception from "len(m.infoTable.Rows()) > 0" check
+		if m.infoTable.Focused() && msg.String() == "?" {
+			m.showHelp = !m.showHelp
+			m.updateDimensions()
+		}
+
+		if m.infoTable.Focused() && len(m.infoTable.Rows()) > 0 {
+			switch msg.String() {
+
+			case "enter":
 				sel := m.infoTable.Cursor()
 				m.dirContent[sel].selection = !m.dirContent[sel].selection
 				m.populateTable(m.dirContent)
-			}
 
-		case "shift+down", "ctrl+down": // select row & move down
-			if m.infoTable.Focused() {
+			case "shift+down", "ctrl+down": // select row & move down
 				sel := m.infoTable.Cursor()
 				m.dirContent[sel].selection = true
 				m.populateTable(m.dirContent)
 				m.infoTable.MoveDown(1)
-			}
 
-		case "shift+up", "ctrl+up": // undo selection & move up
-			if m.infoTable.Focused() {
+			case "shift+up", "ctrl+up": // undo selection & move up
 				sel := m.infoTable.Cursor()
 				m.dirContent[sel].selection = false
 				m.populateTable(m.dirContent)
 				m.infoTable.MoveUp(1)
-			}
 
-		case "ctrl+a":
-			if m.infoTable.Focused() {
+			case "ctrl+a":
 				for i := range m.dirContent {
 					m.dirContent[i].selection = true
 				}
 				m.populateTable(m.dirContent)
-			}
 
-		case "ctrl+z":
-			if m.infoTable.Focused() {
+			case "ctrl+z":
 				for i := range m.dirContent {
 					m.dirContent[i].selection = false
 				}
 				m.populateTable(m.dirContent)
-			}
 
-		case "?":
-			if m.infoTable.Focused() {
-				m.showHelp = !m.showHelp
-				m.updateDimensions()
-			}
+			case "/":
+				var cmd tea.Cmd
+				if len(m.infoTable.Rows()) > 0 {
+					cmd = hideInfoSpaceTitle(true).cmd
+				}
+				return m, cmd
 
+			}
 		}
 
 	case extendDirMsg:
-		m.tableFocus = msg.focus
+		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
 
 	case dirContentsMsg:
 		m.dirContent = msg
 		m.populateTable(msg)
-		if m.tableFocus {
+		if m.focusOnExtend {
 			m.infoTable.Focus()
 		} else {
 			m.infoTable.Blur()
 		}
 		// if table is focused, then info space also needs to be focused
-		return m, extendSpaceMsg{send, m.tableFocus}.cmd
+		return m, extendSpaceMsg{send, m.focusOnExtend}.cmd
 
 	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == info {
@@ -153,11 +156,27 @@ func (m sendInfoModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Top, m.infoTable.View(), help.Render())
 }
 
+func newFilterInputModel() textinput.Model {
+	c := cursor.New()
+	c.Style = lipgloss.NewStyle().Foreground(highlightColor)
+
+	f := textinput.New()
+	f.PromptStyle = f.PromptStyle.Foreground(highlightColor)
+	f.TextStyle = lipgloss.NewStyle().Foreground(highlightColor)
+	f.Placeholder = "filter by name"
+	f.PlaceholderStyle = lipgloss.NewStyle().
+		Foreground(highlightColor).
+		Faint(true)
+	f.Cursor = c
+	f.Prompt = "🔎 "
+	return f
+}
+
 func (m *sendInfoModel) updateDimensions() {
 	w := largeContainerW() - (infoContainerStyle.GetHorizontalFrameSize())
 	m.infoTable.SetWidth(w + 2)
 	helpHeight := lipgloss.Height(customInfoTableHelp(m.showHelp).String())
-	m.infoTable.SetHeight(infoContainerWorkableH() - helpHeight)
+	m.infoTable.SetHeight(infoContainerWorkableH(true) - helpHeight)
 	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
 }
 
