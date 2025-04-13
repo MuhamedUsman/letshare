@@ -40,22 +40,22 @@ func initialSendInfoModel() sendInfoModel {
 }
 
 func getTableCols(tableWidth int) []table.Column {
-	cols := []string{"✓", "Name", "Ext", "Size"}
+	cols := []string{"✓", "Name", "Type", "Size"}
 	subW := customTableStyles.Cell.GetHorizontalFrameSize() * len(cols)
 	tableWidth -= subW
 	selectionW := 1
 	tableWidth -= selectionW
 	nameW := (tableWidth * 62) / 100
-	extW := (tableWidth * 18) / 100
+	typeW := (tableWidth * 18) / 100
 	sizeW := (tableWidth * 20) / 100
 	// terminals have rows x cols as integer values
 	// this condition is to take into account the
 	// precision loss from above division ops
-	nameW += int(math.Abs(float64(tableWidth - (sizeW + extW + nameW))))
+	nameW += int(math.Abs(float64(tableWidth - (sizeW + typeW + nameW))))
 	return []table.Column{
 		{cols[0], selectionW},
 		{cols[1], nameW},
-		{cols[2], extW},
+		{cols[2], typeW},
 		{cols[3], sizeW},
 	}
 }
@@ -74,6 +74,13 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
+		case "enter":
+			if m.infoTable.Focused() {
+				sel := m.infoTable.Cursor()
+				m.dirContent[sel].selection = !m.dirContent[sel].selection
+				m.populateTable(m.dirContent)
+			}
+
 		case "shift+down", "ctrl+down": // select row & move down
 			if m.infoTable.Focused() {
 				sel := m.infoTable.Cursor()
@@ -88,6 +95,22 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 				m.dirContent[sel].selection = false
 				m.populateTable(m.dirContent)
 				m.infoTable.MoveUp(1)
+			}
+
+		case "ctrl+a":
+			if m.infoTable.Focused() {
+				for i := range m.dirContent {
+					m.dirContent[i].selection = true
+				}
+				m.populateTable(m.dirContent)
+			}
+
+		case "ctrl+z":
+			if m.infoTable.Focused() {
+				for i := range m.dirContent {
+					m.dirContent[i].selection = false
+				}
+				m.populateTable(m.dirContent)
 			}
 
 		case "?":
@@ -113,7 +136,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		// if table is focused, then info space also needs to be focused
 		return m, extendSpaceMsg{send, m.tableFocus}.cmd
 
-	case spaceTabSwitchMsg:
+	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == info {
 			m.infoTable.Focus()
 		} else {
@@ -161,21 +184,30 @@ func (sendInfoModel) readDir(path string) tea.Cmd {
 		}
 		dirContents := make([]dirContent, 0, len(entries))
 		for _, entry := range entries {
-			// only files
-			if entry.IsDir() {
-				continue
-			}
 			eInfo, _ := entry.Info()
-			ext := filepath.Ext(entry.Name())
-			name := strings.TrimSuffix(entry.Name(), ext)
-			ext = strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
-			if ext == "" {
-				ext = "–––"
+			filetype := filepath.Ext(entry.Name())
+			// name without ext
+			name := strings.TrimSuffix(entry.Name(), filetype)
+			filetype = strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
+			// for files like .gitignore
+			if strings.Count(entry.Name(), ".") == 1 &&
+				strings.HasPrefix(entry.Name(), ".") {
+				name = entry.Name()
+				filetype = ""
+			}
+			size := util.UserFriendlyFilesize(eInfo.Size())
+			if entry.IsDir() {
+				name = entry.Name()
+				filetype = "dir"
+				size = "–––"
+			}
+			if filetype == "" {
+				filetype = "–––"
 			}
 			c := dirContent{
 				name: name,
-				ext:  ext,
-				size: util.UserFriendlyFilesize(eInfo.Size()),
+				ext:  filetype,
+				size: size,
 			}
 			dirContents = append(dirContents, c)
 		}
@@ -204,6 +236,11 @@ func customInfoTableHelp(show bool) *lipTable.Table {
 		rows = [][]string{
 			{"shift+↓/ctrl+↓", "make selection"},
 			{"shift+↑/ctrl+↑", "undo selection"},
+			{"enter", "select/deselect at cursor"},
+			{"ctrl+a", "select all"},
+			{"ctrl+z", "deselect all"},
+			{"/", "filter"},
+			{"esc", "exit filtering"},
 			{"b/pgup", "page up"},
 			{"f/space", "page down"},
 			{"g/home", "go to start"},
@@ -213,7 +250,6 @@ func customInfoTableHelp(show bool) *lipTable.Table {
 	}
 	return lipTable.New().
 		Border(lipgloss.HiddenBorder()).
-		//BorderTop(false).
 		BorderBottom(false).
 		Wrap(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
@@ -226,5 +262,4 @@ func customInfoTableHelp(show bool) *lipTable.Table {
 				return baseStyle
 			}
 		}).Rows(rows...)
-
 }
