@@ -35,10 +35,12 @@ var ( // Container width calculations
 		return termW - (smallContainerW()*2 + mainContainerStyle.GetHorizontalFrameSize())
 	}
 
-	infoContainerWorkableH = func() int {
+	infoContainerWorkableH = func(includeTitle bool) int {
 		h := mainContainerStyle.GetVerticalFrameSize() +
-			infoContainerStyle.GetVerticalFrameSize() +
-			lipgloss.Height(titleStyle.String())
+			infoContainerStyle.GetVerticalFrameSize()
+		if includeTitle {
+			h += lipgloss.Height(titleStyle.String())
+		}
 		return termH - h
 	}
 )

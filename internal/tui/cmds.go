@@ -39,3 +39,7 @@ func (msg extendSpaceMsg) cmd() tea.Msg { return msg }
 type spaceFocusSwitchMsg focusedTab
 
 func (msg spaceFocusSwitchMsg) cmd() tea.Msg { return msg }
+
+type hideInfoSpaceTitle bool
+
+func (msg hideInfoSpaceTitle) cmd() tea.Msg { return msg }
