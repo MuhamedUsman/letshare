@@ -147,11 +147,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			case " ": // space
 				selDir := m.dirList.SelectedItem().FilterValue()
 				selPath := filepath.Join(m.curDirPath, selDir)
-				// double space action is valid
+				// double spaceBar action is valid
 				if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
 					return m, extendDirMsg{selPath, true}.cmd
 				}
-				m.prevSelDir = selDir // registering first space
+				m.prevSelDir = selDir // registering first spaceBar action
 				return m, extendDirMsg{selPath, false}.cmd
 
 			case "?":
@@ -184,7 +184,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		}
 		return m, m.populateDirList(msg.entries)
 
-	case spaceTabSwitchMsg:
+	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == send {
 			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
 			m.dirList.DisableQuitKeybindings()

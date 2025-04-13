@@ -28,7 +28,7 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 
 	case tea.KeyMsg:
 
-	case spaceTabSwitchMsg:
+	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == receive {
 			m.titleStyle = titleStyle.
 				Background(highlightColor).

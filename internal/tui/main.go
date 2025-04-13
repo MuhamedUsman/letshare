@@ -58,14 +58,21 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if currentFocus > receive {
 				currentFocus = send
 			}
-			return m, spaceTabSwitchMsg(currentFocus).cmd
+			return m, spaceFocusSwitchMsg(currentFocus).cmd
 
 		case "shift+tab":
 			currentFocus--
 			if currentFocus < send {
 				currentFocus = receive
 			}
-			return m, spaceTabSwitchMsg(currentFocus).cmd
+			return m, spaceFocusSwitchMsg(currentFocus).cmd
+
+		case "backspace":
+			if currentFocus == info {
+				currentFocus = send
+				return m, spaceFocusSwitchMsg(send).cmd
+			}
+
 		}
 	}
 

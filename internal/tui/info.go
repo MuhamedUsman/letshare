@@ -9,6 +9,7 @@ type infoModel struct {
 	sendInfo      sendInfoModel
 	titleStyle    lipgloss.Style
 	extendedSpace focusedTab
+	dirToExtend   string
 }
 
 func initialInfoModel() infoModel {
@@ -41,10 +42,10 @@ func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
 		m.extendedSpace = msg.space
 		if msg.focus {
 			currentFocus = info
-			return m, spaceTabSwitchMsg(info).cmd
+			return m, spaceFocusSwitchMsg(info).cmd
 		}
 
-	case spaceTabSwitchMsg:
+	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == info {
 			m.updateTitleStyleAsFocus(true)
 		} else {
