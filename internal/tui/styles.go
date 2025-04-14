@@ -111,6 +111,15 @@ var ( // sendInfoModel Styles
 			Italic(true),
 		Cell: table.DefaultStyles().Cell.Foreground(midHighlightColor),
 	}
+
+	infoTableStatusBarStyle = lipgloss.NewStyle().
+				Margin(1, 1, 0, 1).
+				Italic(true).
+				Foreground(highlightColor).
+				Faint(true)
+
+	infoTableFilterContainerStyle = lipgloss.NewStyle().
+					Align(lipgloss.Center)
 )
 
 var ( // receiveModel Styles

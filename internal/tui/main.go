@@ -67,12 +67,6 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, spaceFocusSwitchMsg(currentFocus).cmd
 
-		case "backspace":
-			if currentFocus == info {
-				currentFocus = send
-				return m, spaceFocusSwitchMsg(send).cmd
-			}
-
 		}
 	}
 
