@@ -3,7 +3,6 @@ package tui
 import (
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	"github.com/charmbracelet/lipgloss"
-	"math"
 )
 
 var ( // color scheme from https://github.com/morhetz/gruvbox
@@ -27,8 +26,7 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 var ( // Container width calculations
 
 	smallContainerW = func() int {
-		w := float64(termW*25) / 100
-		return int(math.RoundToEven(w))
+		return (termW * 25) / 100
 	}
 
 	largeContainerW = func() int {
@@ -124,4 +122,29 @@ var ( // sendInfoModel Styles
 
 var ( // receiveModel Styles
 
+)
+
+var ( // confirmDialogModel Styles
+
+	confirmDialogContainerStyle = lipgloss.NewStyle().
+					BorderStyle(lipgloss.RoundedBorder()).
+					BorderForeground(highlightColor).
+					Padding(1, 2)
+
+	confirmDialogHeaderStyle = lipgloss.NewStyle().
+					Background(highlightColor).
+					Foreground(subduedHighlightColor).
+					Padding(0, 1).
+					Faint(true)
+
+	confirmDialogBodyStyle = lipgloss.NewStyle().
+				Italic(true).
+				Padding(1, 0).
+				Foreground(highlightColor)
+
+	confirmDialogBtnStyle = lipgloss.NewStyle().
+				Background(subduedGrayColor).
+				Foreground(fgColor).
+				Padding(0, 2).
+				MarginRight(1)
 )

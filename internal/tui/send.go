@@ -356,7 +356,7 @@ func (m *sendModel) updateDimensions() {
 	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
 	h := termH - (mainContainerStyle.GetVerticalFrameSize() + smallContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
-	w := smallContainerW() - smallContainerStyle.GetHorizontalFrameSize()
+	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize() + 1)
 	m.dirList.SetSize(w, h)
 	// the width of titleBar gets +1 when the title txt overflows so explicitly constraining it
 	w = w - m.dirList.Styles.TitleBar.GetHorizontalFrameSize()

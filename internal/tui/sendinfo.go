@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table" // lipTable -> lipglossTable
+	"github.com/mattn/go-runewidth"
 	"github.com/sahilm/fuzzy"
 	"io/fs"
 	"math"
@@ -52,15 +53,12 @@ func filterDirContent(term string, targets []string) []int {
 }
 
 type sendInfoModel struct {
-	infoTable     table.Model
-	filter        textinput.Model
-	filterState   filterState
-	filterChanged bool
-	focusOnExtend bool
-	dirPath       string
-	dirContents   dirContents
-	// Toggle for help display
-	showHelp bool
+	infoTable                              table.Model
+	filter                                 textinput.Model
+	filterState                            filterState
+	dirContents                            dirContents
+	dirPath                                string
+	filterChanged, focusOnExtend, showHelp bool
 }
 
 func initialSendInfoModel() sendInfoModel {
@@ -168,6 +166,11 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 			}
 			return m, hideInfoSpaceTitle(false).cmd
 
+		case "backspace":
+			if m.getSelectionCount() > 0 {
+				return m, confirmDialogMsg{"ARE YOU SURE?", "All the selections will be lost..."}.cmd
+			}
+
 		}
 
 	case extendDirMsg:
@@ -192,6 +195,12 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 			m.resetFilter()
 			m.infoTable.Blur()
 			return m, hideInfoSpaceTitle(false).cmd
+		}
+
+	case confirmDialogRespMsg:
+		if msg && currentFocus == info {
+			currentFocus = send
+			return m, spaceFocusSwitchMsg(send).cmd
 		}
 
 	}
@@ -402,19 +411,37 @@ func (m sendInfoModel) getStatus() string {
 	// unfiltered
 	status := fmt.Sprintf("%d Dir/s • %d File/s • %d Total",
 		m.dirContents.dirs, m.dirContents.files, len(m.dirContents.contents))
+	selectCount := m.getSelectionCount()
+	if selectCount > 0 {
+		status = fmt.Sprintf("%d Dir/s • %d File/s • %d Selected • %d Total",
+			m.dirContents.dirs, m.dirContents.files, selectCount, len(m.dirContents.contents))
+	}
 	if utf8.RuneCountInString(m.filter.Value()) == 0 {
 		return status
 	}
-	matches := "Nothing matches"
+	matches := "Nothing matched"
 	filtered := len(m.dirContents.contents)
 	if len(m.dirContents.filteredContents) > 0 {
-		matches = fmt.Sprint(len(m.dirContents.filteredContents), " ", "match/es")
+		matches = fmt.Sprint(len(m.dirContents.filteredContents), " ", "Match/es")
 	}
-	status = fmt.Sprintf("%s • %d filtered", matches, filtered)
+	status = fmt.Sprintf("%s • %d Filtered", matches, filtered)
+	if selectCount > 0 {
+		status = fmt.Sprintf("%s • %d Selected • %d Filtered", matches, selectCount, filtered)
+	}
 	if m.filterState == filterApplied {
 		status = fmt.Sprintf("“%s” %s", m.filter.Value(), status)
 	}
-	return status
+	return runewidth.Truncate(status, largeContainerW()-4, "…") // -4 for tail, infoContainer & statusBar frame size
+}
+
+func (m sendInfoModel) getSelectionCount() int {
+	count := 0
+	for _, content := range m.dirContents.contents {
+		if content.selection {
+			count++
+		}
+	}
+	return count
 }
 
 func customInfoTableHelp(show bool) *lipTable.Table {
