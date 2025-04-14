@@ -189,6 +189,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
 			m.dirList.DisableQuitKeybindings()
 		} else {
+			m.dirList.ResetFilter()
 			m.dirList.KeyMap = list.KeyMap{} // disable list keymap
 		}
 		m.setTitleStylesAsFocus()
@@ -270,12 +271,12 @@ func newDirList() list.Model {
 	f := textinput.New()
 	f.PromptStyle = l.Styles.FilterPrompt.Foreground(highlightColor)
 	f.TextStyle = lipgloss.NewStyle().Foreground(highlightColor)
-	f.Placeholder = "Directory Name"
+	f.Placeholder = "Filter by Name"
 	f.PlaceholderStyle = lipgloss.NewStyle().
 		Foreground(highlightColor).
 		Faint(true)
 	f.Cursor = c
-	f.Prompt = "🔎 "
+	f.Prompt = ""
 
 	l.FilterInput = f
 
