@@ -58,6 +58,7 @@ type sendInfoModel struct {
 	filterState                            filterState
 	dirContents                            dirContents
 	dirPath                                string
+	confirmationId                         uint
 	filterChanged, focusOnExtend, showHelp bool
 }
 
@@ -102,6 +103,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
+
 		switch msg.String() {
 
 		case "enter":
@@ -166,14 +168,15 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 			}
 			return m, hideInfoSpaceTitle(false).cmd
 
-		case "backspace":
-			if m.getSelectionCount() > 0 {
-				return m, confirmDialogMsg{"ARE YOU SURE?", "All the selections will be lost..."}.cmd
-			}
-
 		}
 
 	case extendDirMsg:
+		// user is trying to extend a new dir, but previous extended dir has selected items
+		if m.getSelectionCount() > 0 {
+			m.confirmationId = getNextID()
+			return m,
+				confirmDialogCmd("ARE YOU SURE?", "All the selections will be lost...", yup, m.confirmationId)
+		}
 		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
 
@@ -198,7 +201,10 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		}
 
 	case confirmDialogRespMsg:
-		if msg && currentFocus == info {
+		if msg.id != m.confirmationId {
+			return m, nil
+		}
+		if msg.resp == yup && currentFocus == info {
 			currentFocus = send
 			return m, spaceFocusSwitchMsg(send).cmd
 		}
