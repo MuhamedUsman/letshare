@@ -6,7 +6,7 @@ import (
 )
 
 type infoModel struct {
-	sendInfo      sendInfoModel
+	extendDir     extendDirModel
 	titleStyle    lipgloss.Style
 	extendedSpace focusedTab
 	dirToExtend   string
@@ -15,13 +15,13 @@ type infoModel struct {
 
 func initialInfoModel() infoModel {
 	return infoModel{
-		sendInfo:   initialSendInfoModel(),
+		extendDir:  initialSendInfoModel(),
 		titleStyle: titleStyle,
 	}
 }
 
 func (m infoModel) Init() tea.Cmd {
-	return m.sendInfo.Init()
+	return m.extendDir.Init()
 }
 
 func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
@@ -35,9 +35,10 @@ func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
 		switch msg.String() {
 
 		case "esc":
-			// when title is hidden, the esc will be used in sendInfoModel
-			if currentFocus == info && !m.hideTitle && m.sendInfo.filterState != filterApplied {
-				m.extendedSpace = main
+			// when title is hidden, the esc will be used in extendDirModel
+			if currentFocus == info && !m.hideTitle && m.extendDir.filterState != filterApplied {
+				m.extendedSpace = home
+				m.extendDir.focus = false
 			}
 
 		case "backspace":
@@ -75,7 +76,7 @@ func (m infoModel) View() string {
 	infoContent := banner.Height(infoContainerWorkableH(!m.hideTitle)).Render() // !m.hideTitle == showTitle
 	if m.extendedSpace == send {
 		title = "Extended Local Space"
-		infoContent = m.sendInfo.View()
+		infoContent = m.extendDir.View()
 	}
 	if m.extendedSpace == receive {
 		title = "Extended Remote Space"
@@ -93,7 +94,7 @@ func (m infoModel) View() string {
 
 func (m *infoModel) handleInfoModelUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	m.sendInfo, cmd = m.sendInfo.Update(msg)
+	m.extendDir, cmd = m.extendDir.Update(msg)
 	return cmd
 }
 

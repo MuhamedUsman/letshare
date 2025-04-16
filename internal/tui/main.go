@@ -10,7 +10,7 @@ type focusedTab int
 
 const (
 	// No focusedTab
-	main focusedTab = iota
+	home focusedTab = iota
 	send
 	info
 	receive
