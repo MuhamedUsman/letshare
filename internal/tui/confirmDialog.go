@@ -9,9 +9,8 @@ import (
 type confirmationCursor = int
 
 const (
-	esc = iota
+	nope = iota
 	yup
-	nope
 )
 
 type confirmDialogMsg struct {

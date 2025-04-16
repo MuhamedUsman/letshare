@@ -52,22 +52,21 @@ func filterDirContent(term string, targets []string) []int {
 	return result
 }
 
-type sendInfoModel struct {
-	infoTable                              table.Model
-	filter                                 textinput.Model
-	filterState                            filterState
-	dirContents                            dirContents
-	dirPath                                string
-	confirmationId                         uint
-	filterChanged, focusOnExtend, showHelp bool
+type extendDirModel struct {
+	infoTable                                     table.Model
+	filter                                        textinput.Model
+	filterState                                   filterState
+	dirContents                                   dirContents
+	dirPath                                       string
+	filterChanged, focusOnExtend, showHelp, focus bool
 }
 
-func initialSendInfoModel() sendInfoModel {
+func initialSendInfoModel() extendDirModel {
 	t := table.New(
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
 	)
-	return sendInfoModel{infoTable: t, filter: newFilterInputModel()}
+	return extendDirModel{infoTable: t, filter: newFilterInputModel()}
 }
 
 func getTableCols(tableWidth int) []table.Column {
@@ -91,11 +90,11 @@ func getTableCols(tableWidth int) []table.Column {
 	}
 }
 
-func (m sendInfoModel) Init() tea.Cmd {
+func (m extendDirModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
+func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
@@ -157,7 +156,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 			}
 
 		case "?":
-			if currentFocus == info && m.filterState != filtering {
+			if currentFocus == info && m.filterState != filtering && m.focus {
 				m.showHelp = !m.showHelp
 				m.updateDimensions()
 			}
@@ -168,6 +167,8 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 				m.infoTable.Focus()
 				m.populateTable(m.dirContents.contents)
 			}
+			m.infoTable.SetRows(nil)
+			m.infoTable.Blur()
 			return m, hideInfoSpaceTitle(false).cmd
 
 		}
@@ -195,6 +196,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	case spaceFocusSwitchMsg:
 		if focusedTab(msg) == info {
 			m.infoTable.Focus()
+			m.focus = true
 		} else {
 			m.resetFilter()
 			m.infoTable.Blur()
@@ -210,7 +212,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	return m, tea.Batch(m.handleInfoTableUpdate(msg), m.handleFilterInputUpdate(msg))
 }
 
-func (m sendInfoModel) showConfirmationDialog(msg tea.Msg) tea.Cmd {
+func (m extendDirModel) showConfirmationDialog(msg tea.Msg) tea.Cmd {
 	var yupFunc, nopeFunc func() tea.Cmd
 	var header, body string
 	var selBtn confirmationCursor
@@ -230,7 +232,7 @@ func (m sendInfoModel) showConfirmationDialog(msg tea.Msg) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc)
 }
 
-func (m sendInfoModel) View() string {
+func (m extendDirModel) View() string {
 	help := customInfoTableHelp(m.showHelp)
 	help.Width(m.infoTable.Width())
 
@@ -265,7 +267,7 @@ func newFilterInputModel() textinput.Model {
 	return f
 }
 
-func (m *sendInfoModel) updateDimensions() {
+func (m *extendDirModel) updateDimensions() {
 	w := largeContainerW() - (infoContainerStyle.GetHorizontalFrameSize())
 	m.infoTable.SetWidth(w + 2)
 	m.filter.Width = (w * 60) / 100 // 60% of available width
@@ -275,21 +277,21 @@ func (m *sendInfoModel) updateDimensions() {
 	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
 }
 
-func (m *sendInfoModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
+func (m *extendDirModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.infoTable, cmd = m.infoTable.Update(msg)
 	return cmd
 }
 
 // handle update while also evaluating if the filter is changed
-func (m *sendInfoModel) handleFilterInputUpdate(msg tea.Msg) tea.Cmd {
+func (m *extendDirModel) handleFilterInputUpdate(msg tea.Msg) tea.Cmd {
 	newModel, cmd := m.filter.Update(msg)
 	m.filterChanged = m.filter.Value() != newModel.Value()
 	m.filter = newModel
 	return cmd
 }
 
-func (sendInfoModel) readDir(path string) tea.Cmd {
+func (extendDirModel) readDir(path string) tea.Cmd {
 	return func() tea.Msg {
 		entries, err := os.ReadDir(path)
 		if err != nil {
@@ -343,7 +345,7 @@ func (sendInfoModel) readDir(path string) tea.Cmd {
 	}
 }
 
-func (m *sendInfoModel) populateTable(contents []dirContent) {
+func (m *extendDirModel) populateTable(contents []dirContent) {
 	// case of filtering && there is some input to filter against
 	if m.filterState != unfiltered && utf8.RuneCountInString(m.filter.Value()) > 0 {
 		rows := make([]table.Row, 0, len(contents))
@@ -369,11 +371,11 @@ func (m *sendInfoModel) populateTable(contents []dirContent) {
 	m.infoTable.SetRows(rows)
 }
 
-func (m sendInfoModel) isValidTableShortcut() bool {
+func (m extendDirModel) isValidTableShortcut() bool {
 	return currentFocus == info && m.infoTable.Focused() && len(m.infoTable.Rows()) > 0
 }
 
-func (m *sendInfoModel) selectAll(selection bool) {
+func (m *extendDirModel) selectAll(selection bool) {
 	if m.isValidTableShortcut() {
 		if m.filterState != unfiltered {
 			for _, i := range m.dirContents.filteredContents {
@@ -388,7 +390,7 @@ func (m *sendInfoModel) selectAll(selection bool) {
 	}
 }
 
-func (m *sendInfoModel) selectSingle(selection bool) {
+func (m *extendDirModel) selectSingle(selection bool) {
 	sel := m.infoTable.Cursor()
 	if m.filterState != unfiltered {
 		sel = m.dirContents.filteredContents[sel]
@@ -397,20 +399,20 @@ func (m *sendInfoModel) selectSingle(selection bool) {
 	m.populateTable(m.dirContents.contents)
 }
 
-func (m *sendInfoModel) resetFilter() {
+func (m *extendDirModel) resetFilter() {
 	m.filter.Reset()
 	m.filter.Blur()
 	m.filterState = unfiltered
 }
 
-func (m sendInfoModel) applyFilter() tea.Cmd {
+func (m extendDirModel) applyFilter() tea.Cmd {
 	m.filter.Blur()
 	m.filterState = filterApplied
 	m.infoTable.Focus()
 	return hideInfoSpaceTitle(false).cmd
 }
 
-func (m *sendInfoModel) handleFiltering() tea.Cmd {
+func (m *extendDirModel) handleFiltering() tea.Cmd {
 	if !m.filterChanged {
 		return nil
 	}
@@ -425,7 +427,7 @@ func (m *sendInfoModel) handleFiltering() tea.Cmd {
 	return nil
 }
 
-func (m sendInfoModel) getStatus() string {
+func (m extendDirModel) getStatus() string {
 	// unfiltered
 	status := fmt.Sprintf("%d Dir/s • %d File/s • %d Total",
 		m.dirContents.dirs, m.dirContents.files, len(m.dirContents.contents))
@@ -452,7 +454,7 @@ func (m sendInfoModel) getStatus() string {
 	return runewidth.Truncate(status, largeContainerW()-4, "…") // -4 for tail, infoContainer & statusBar frame size
 }
 
-func (m sendInfoModel) getSelectionCount() int {
+func (m extendDirModel) getSelectionCount() int {
 	count := 0
 	for _, content := range m.dirContents.contents {
 		if content.selection {

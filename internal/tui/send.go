@@ -345,7 +345,7 @@ func customDirListHelpTable(show bool) *table.Table {
 			case 1:
 				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
 			default:
-				return lipgloss.Style{}
+				return baseStyle
 			}
 		}).Rows(rows...)
 
@@ -356,7 +356,7 @@ func (m *sendModel) updateDimensions() {
 	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
 	h := termH - (mainContainerStyle.GetVerticalFrameSize() + smallContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
-	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize() + 1)
+	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize() + 1) // +1 experimental
 	m.dirList.SetSize(w, h)
 	// the width of titleBar gets +1 when the title txt overflows so explicitly constraining it
 	w = w - m.dirList.Styles.TitleBar.GetHorizontalFrameSize()

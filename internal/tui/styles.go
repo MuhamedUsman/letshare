@@ -93,7 +93,7 @@ var ( // infoModel Styles
            ` + slogan.Render()
 )
 
-var ( // sendInfoModel Styles
+var ( // extendDirModel Styles
 
 	customTableStyles = table.Styles{
 		Header: table.DefaultStyles().Header.
