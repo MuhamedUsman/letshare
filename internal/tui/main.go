@@ -10,7 +10,7 @@ type focusedTab int
 
 const (
 	// No focusedTab
-	none focusedTab = iota
+	main focusedTab = iota
 	send
 	info
 	receive
@@ -51,10 +51,17 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		termH = msg.Height
 
 	case tea.KeyMsg:
-		switch msg.String() {
 
-		case "ctrl+c":
+		if msg.Type == tea.KeyCtrlC {
 			return m, tea.Quit
+		}
+
+		// if confirmation dialog is in focus, disable keys of this model
+		if currentFocus == confirmation {
+			return m, m.handleChildModelUpdates(msg)
+		}
+
+		switch msg.String() {
 
 		case "tab":
 			// loop currentFocus & extendSpace b/w send, info & receive tabs

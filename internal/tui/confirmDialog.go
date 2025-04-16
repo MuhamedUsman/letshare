@@ -3,42 +3,10 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"sync"
 )
 
-var (
-	mu     sync.Mutex
-	nextID uint
-)
-
-func getNextID() uint {
-	mu.Lock()
-	defer mu.Unlock()
-	nextID++
-	return nextID
-}
-
-type confirmDialogMsg struct {
-	header, body string
-	// which btn to be active
-	cursor int // 0: NOPE, 1: YUP!
-	// id uniquely identifies confirmDialogRespMsg
-	// floating around in the bubble tea event loop
-	id uint
-}
-
-func confirmDialogCmd(header, body string, cursor int, id uint) tea.Cmd {
-	return func() tea.Msg {
-		return confirmDialogMsg{
-			header: header,
-			body:   body,
-			cursor: cursor,
-			id:     id,
-		}
-	}
-}
-
-type confirmationResp int
+// cursor indicates current active button
+type confirmationCursor = int
 
 const (
 	esc = iota
@@ -46,26 +14,36 @@ const (
 	nope
 )
 
-type confirmDialogRespMsg struct {
-	resp confirmationResp
-	id   uint
+type confirmDialogMsg struct {
+	header, body string
+	// which btn to be active
+	cursor            confirmationCursor
+	yupFunc, nopeFunc func() tea.Cmd
 }
 
-func (msg confirmDialogRespMsg) cmd() tea.Msg { return msg }
+func confirmDialogCmd(header, body string, cursor confirmationCursor, yupFunc, nopeFunc func() tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		return confirmDialogMsg{
+			header:   header,
+			body:     body,
+			cursor:   cursor,
+			yupFunc:  yupFunc,
+			nopeFunc: nopeFunc,
+		}
+	}
+}
 
 type confirmDialogModel struct {
 	// header and body of the dialog box
 	header, body string
-	// cursor indicates current active button
-	cursor int // 0: NOPE, 1: YUP!
+	cursor       confirmationCursor
 	// prevFocus remembers the previous focused space
 	// and releases it accordingly
 	prevFocus focusedTab
-	// id uniquely identifies confirmDialogRespMsg
-	// floating around in the bubble tea event loop
-	id uint
 	// render signals this model's view must be rendered
 	render bool
+	// functions to all on appropriate buttons
+	yupFunc, nopeFunc func() tea.Cmd
 }
 
 func initialConfirmDialogModel() confirmDialogModel {
@@ -80,17 +58,19 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
+		if currentFocus != confirmation {
+			return m, nil
+		}
 		switch msg.String() {
 
 		case "enter":
-			var resp confirmationResp = nope
+			var cmd tea.Cmd
 			if m.cursor == 1 {
-				resp = yup
+				cmd = m.yupFunc()
+			} else {
+				cmd = m.nopeFunc()
 			}
-			m.render = false
-			m.header, m.body = "", ""
-			currentFocus = m.prevFocus
-			return m, tea.Batch(confirmDialogRespMsg{resp: resp, id: m.id}.cmd, spaceFocusSwitchMsg(m.prevFocus).cmd)
+			return m, tea.Batch(m.hide(), cmd)
 
 		case "tab":
 			m.cursor = (m.cursor + 1) % 2
@@ -104,14 +84,16 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 		case "right", "l":
 			m.cursor = 1
 
+		case "esc": // works same as pressing nope btn
+			return m, tea.Batch(m.nopeFunc(), m.hide())
 		}
 
 	case confirmDialogMsg:
-		m.header = msg.header
-		m.body = msg.body
+		m.header, m.body = msg.header, msg.body
+		m.yupFunc, m.nopeFunc = msg.yupFunc, msg.nopeFunc
 		m.cursor = msg.cursor
-		m.id = msg.id
 		m.render = true
+		m.prevFocus = currentFocus
 		currentFocus = confirmation
 		return m, spaceFocusSwitchMsg(confirmation).cmd
 	}
@@ -151,6 +133,14 @@ func (m confirmDialogModel) getDialogWidth() int {
 		w = availableW
 	}
 	return w
+}
+
+func (m *confirmDialogModel) hide() tea.Cmd {
+	m.render = false
+	m.header, m.body = "", ""
+	m.yupFunc, m.nopeFunc = nil, nil
+	currentFocus = m.prevFocus
+	return spaceFocusSwitchMsg(m.prevFocus).cmd
 }
 
 func isEven(n int) bool {
