@@ -29,12 +29,15 @@ func (m infoModel) Update(msg tea.Msg) (infoModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
+		if currentFocus == confirmation {
+			return m, nil
+		}
 		switch msg.String() {
 
 		case "esc":
 			// when title is hidden, the esc will be used in sendInfoModel
 			if currentFocus == info && !m.hideTitle && m.sendInfo.filterState != filterApplied {
-				m.extendedSpace = none
+				m.extendedSpace = main
 			}
 
 		case "backspace":

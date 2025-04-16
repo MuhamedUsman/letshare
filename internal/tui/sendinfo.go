@@ -103,7 +103,9 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-
+		if currentFocus == confirmation {
+			return m, nil
+		}
 		switch msg.String() {
 
 		case "enter":
@@ -173,9 +175,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	case extendDirMsg:
 		// user is trying to extend a new dir, but previous extended dir has selected items
 		if m.getSelectionCount() > 0 {
-			m.confirmationId = getNextID()
-			return m,
-				confirmDialogCmd("ARE YOU SURE?", "All the selections will be lost...", yup, m.confirmationId)
+			return m, m.showConfirmationDialog(msg)
 		}
 		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
@@ -188,6 +188,7 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 		} else {
 			m.infoTable.Blur()
 		}
+		m.infoTable.SetCursor(0)
 		// if table is focused, then info space also needs to be focused
 		return m, extendSpaceMsg{send, m.focusOnExtend}.cmd
 
@@ -200,15 +201,6 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 			return m, hideInfoSpaceTitle(false).cmd
 		}
 
-	case confirmDialogRespMsg:
-		if msg.id != m.confirmationId {
-			return m, nil
-		}
-		if msg.resp == yup && currentFocus == info {
-			currentFocus = send
-			return m, spaceFocusSwitchMsg(send).cmd
-		}
-
 	}
 
 	if m.filterState == filtering {
@@ -216,6 +208,26 @@ func (m sendInfoModel) Update(msg tea.Msg) (sendInfoModel, tea.Cmd) {
 	}
 
 	return m, tea.Batch(m.handleInfoTableUpdate(msg), m.handleFilterInputUpdate(msg))
+}
+
+func (m sendInfoModel) showConfirmationDialog(msg tea.Msg) tea.Cmd {
+	var yupFunc, nopeFunc func() tea.Cmd
+	var header, body string
+	var selBtn confirmationCursor
+
+	switch msg := msg.(type) {
+	case extendDirMsg:
+		selBtn = yup
+		header = "ARE YOU SURE?"
+		body = "All the selections will be lost..."
+		yupFunc = func() tea.Cmd {
+			m.focusOnExtend = msg.focus
+			return m.readDir(msg.path)
+		}
+		nopeFunc = func() tea.Cmd { return nil }
+	}
+
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc)
 }
 
 func (m sendInfoModel) View() string {
