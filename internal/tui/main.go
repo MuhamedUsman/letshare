@@ -6,41 +6,41 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type focusedTab int
+type focusedSpace int
 
 const (
-	// No focusedTab
-	home focusedTab = iota
-	send
-	info
-	receive
+	// No focusedSpace
+	home focusedSpace = iota
+	local
+	extension
+	remote
 	confirmation
 )
 
 var (
 	termW, termH int
-	currentFocus focusedTab
+	currentFocus focusedSpace
 )
 
 type MainModel struct {
-	send         sendModel
-	info         infoModel
-	receive      receiveModel
+	localSpace   localSpaceModel
+	infoSpace    extensionSpaceModel
+	remoteSpace  remoteSpaceModel
 	confirmation confirmDialogModel
 }
 
 func InitialMainModel() MainModel {
 	return MainModel{
-		send:         initialSendModel(),
-		info:         initialInfoModel(),
-		receive:      initialReceiveModel(),
+		localSpace:   initialLocalSpaceModel(),
+		infoSpace:    initialExtensionSpaceModel(),
+		remoteSpace:  initialRemoteSpaceModel(),
 		confirmation: initialConfirmDialogModel(),
 	}
 }
 
 func (m MainModel) Init() tea.Cmd {
-	currentFocus = send
-	return tea.Batch(m.send.Init(), m.info.Init(), m.receive.Init(), m.confirmation.Init())
+	currentFocus = local
+	return tea.Batch(m.localSpace.Init(), m.infoSpace.Init(), m.remoteSpace.Init(), m.confirmation.Init())
 }
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -51,12 +51,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		termH = msg.Height
 
 	case tea.KeyMsg:
+		m.updateKeymapsByFocus()
 
 		if msg.Type == tea.KeyCtrlC {
 			return m, tea.Quit
 		}
 
-		// if confirmation dialog is in focus, disable keys of this model
+		// if the confirmation dialog is in focus, disable keys of this model
 		if currentFocus == confirmation {
 			return m, m.handleChildModelUpdates(msg)
 		}
@@ -64,21 +65,22 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "tab":
-			// loop currentFocus & extendSpace b/w send, info & receive tabs
+			// loop currentFocus & extendSpace b/w local, infoSpace and remote tabs
 			currentFocus++
-			if currentFocus > receive {
-				currentFocus = send
+			if currentFocus > remote {
+				currentFocus = local
 			}
 			return m, spaceFocusSwitchMsg(currentFocus).cmd
 
 		case "shift+tab":
 			currentFocus--
-			if currentFocus < send {
-				currentFocus = receive
+			if currentFocus < local {
+				currentFocus = remote
 			}
 			return m, spaceFocusSwitchMsg(currentFocus).cmd
 
 		}
+
 	}
 
 	return m, m.handleChildModelUpdates(msg)
@@ -87,7 +89,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	subW := mainContainerStyle.GetHorizontalFrameSize()
 	subH := mainContainerStyle.GetVerticalFrameSize()
-	c := lipgloss.JoinHorizontal(lipgloss.Top, m.send.View(), m.info.View(), m.receive.View())
+	c := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.infoSpace.View(), m.remoteSpace.View())
 	if m.confirmation.render {
 		w, h := mainContainerStyle.GetFrameSize()
 		w, h = termW-w, termH-h
@@ -98,9 +100,16 @@ func (m MainModel) View() string {
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, 4)
-	m.send, cmds[0] = m.send.Update(msg)
-	m.receive, cmds[1] = m.receive.Update(msg)
-	m.info, cmds[2] = m.info.Update(msg)
+	m.localSpace, cmds[0] = m.localSpace.Update(msg)
+	m.remoteSpace, cmds[1] = m.remoteSpace.Update(msg)
+	m.infoSpace, cmds[2] = m.infoSpace.Update(msg)
 	m.confirmation, cmds[3] = m.confirmation.Update(msg)
 	return tea.Batch(cmds...)
+}
+
+func (m *MainModel) updateKeymapsByFocus() {
+	m.localSpace.updateKeymap(currentFocus != local)
+	m.infoSpace.updateKeymap(currentFocus != extension)
+	m.remoteSpace.disableKeymap = currentFocus != remote
+	m.confirmation.disableKeymap = currentFocus != confirmation
 }

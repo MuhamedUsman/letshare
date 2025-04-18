@@ -38,9 +38,10 @@ type confirmDialogModel struct {
 	cursor       confirmationCursor
 	// prevFocus remembers the previous focused space
 	// and releases it accordingly
-	prevFocus focusedTab
+	prevFocus focusedSpace
 	// render signals this model's view must be rendered
-	render bool
+	render        bool
+	disableKeymap bool
 	// functions to all on appropriate buttons
 	yupFunc, nopeFunc func() tea.Cmd
 }
@@ -64,9 +65,9 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 
 		case "enter":
 			var cmd tea.Cmd
-			if m.cursor == 1 {
+			if m.cursor == 1 && m.yupFunc != nil {
 				cmd = m.yupFunc()
-			} else {
+			} else if m.nopeFunc != nil {
 				cmd = m.nopeFunc()
 			}
 			return m, tea.Batch(m.hide(), cmd)

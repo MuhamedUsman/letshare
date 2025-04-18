@@ -1,4 +1,4 @@
-package util
+package bgtask
 
 import (
 	"context"
@@ -13,7 +13,7 @@ var (
 	bt   *BackgroundTask
 )
 
-// BackgroundTask manages a collection of goroutines with shared lifecycle.
+// BackgroundTask manages a collection of goroutines with a shared lifecycle.
 // It provides a mechanism to run, track, and gracefully shut down background tasks.
 type BackgroundTask struct {
 	wg     *sync.WaitGroup
@@ -22,9 +22,9 @@ type BackgroundTask struct {
 	Tasks  int
 }
 
-// NewBgTask returns a singleton BackgroundTask instance.
-// It creates the instance on first call and returns the same instance on subsequent calls.
-func NewBgTask() *BackgroundTask {
+// New returns a singleton BackgroundTask instance.
+// It creates the instance on the first call and returns the same instance on subsequent calls.
+func New() *BackgroundTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	once.Do(func() {
 		bt = &BackgroundTask{
