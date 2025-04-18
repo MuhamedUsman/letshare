@@ -33,12 +33,8 @@ var ( // Container width calculations
 		return termW - (smallContainerW()*2 + mainContainerStyle.GetHorizontalFrameSize())
 	}
 
-	infoContainerWorkableH = func(includeTitle bool) int {
-		h := mainContainerStyle.GetVerticalFrameSize() +
-			infoContainerStyle.GetVerticalFrameSize()
-		if includeTitle {
-			h += lipgloss.Height(titleStyle.String())
-		}
+	infoContainerWorkableH = func() int {
+		h := mainContainerStyle.GetVerticalFrameSize() + infoContainerStyle.GetVerticalFrameSize()
 		return termH - h
 	}
 )
@@ -49,8 +45,8 @@ var ( // Common Styles
 			Background(subduedGrayColor).
 			Foreground(highlightColor).
 			Italic(true).
-			Padding(0, 1).
-			MarginBottom(1)
+			Height(1).
+			Padding(0, 1)
 
 	smallContainerStyle = lipgloss.NewStyle().
 				Margin(1, 1, 0, 1)
@@ -112,6 +108,7 @@ var ( // extendDirModel Styles
 
 	infoTableStatusBarStyle = lipgloss.NewStyle().
 				Margin(1, 1, 0, 1).
+				Height(1).
 				Italic(true).
 				Foreground(highlightColor).
 				Faint(true)

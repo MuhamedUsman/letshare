@@ -3,7 +3,6 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
 
 type extensionSpaceModel struct {
@@ -46,7 +45,6 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 
 	case extendSpaceMsg:
-		m.updateTitleStyleAsFocus(msg.focus)
 		m.extendedSpace = msg.space
 		if msg.space == home {
 			m.disableKeymap = true
@@ -71,27 +69,19 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 }
 
 func (m extensionSpaceModel) View() string {
-	title := "Home Space"
-	infoContent := banner.Height(infoContainerWorkableH(!m.hideTitle)).Render() // !m.hideTitle == showTitle
-	if m.extendedSpace == local {
-		title = m.localExtension.getTitle()
-		tail := "…"
-		w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + 1) // +1 experimental
-		title = runewidth.Truncate(title, w, tail)
-		infoContent = m.localExtension.View()
-	}
-	if m.extendedSpace == remote {
-		title = "Extended Remote Space"
-		infoContent = ""
-	}
-	title = m.titleStyle.Render(title)
 	style := infoContainerStyle.
 		Width(largeContainerW()).
 		Height(termH - (mainContainerStyle.GetVerticalFrameSize()))
-	if m.hideTitle {
-		return style.Render(infoContent)
+	switch m.extendedSpace {
+	case home:
+		title := m.titleStyle.Render("Home Space")
+		b := banner.Height(infoContainerWorkableH() - lipgloss.Height(title)).Render()
+		return style.Render(lipgloss.JoinVertical(lipgloss.Center, title, b))
+	case local:
+		return style.Render(m.localExtension.View())
+	default:
+		return ""
 	}
-	return style.Render(title, infoContent)
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
