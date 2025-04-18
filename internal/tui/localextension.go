@@ -2,7 +2,6 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"path/filepath"
 )
 
 // localExtensionModel manages extensions for the local Space component.
@@ -31,7 +30,6 @@ func (m localExtensionModel) Init() tea.Cmd {
 }
 
 func (m localExtensionModel) Update(msg tea.Msg) (localExtensionModel, tea.Cmd) {
-	m.extendDir.disableKeymap = m.disableKeymap
 	var cmd tea.Cmd
 	m.extendDir, cmd = m.extendDir.Update(msg)
 	return m, cmd
@@ -39,10 +37,6 @@ func (m localExtensionModel) Update(msg tea.Msg) (localExtensionModel, tea.Cmd) 
 
 func (m localExtensionModel) View() string {
 	return m.extendDir.View()
-}
-
-func (m localExtensionModel) getTitle() string {
-	return "Extended Dir: " + filepath.Base(m.extendDir.dirPath)
 }
 
 func (m localExtensionModel) grantExtensionSwitch(space focusedSpace) tea.Cmd {

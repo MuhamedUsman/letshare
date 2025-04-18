@@ -34,11 +34,11 @@ type dirContent struct {
 }
 
 type dirContents struct {
-	parentDir string
-	contents  []dirContent
+	contents []dirContent
 	// indices of filtered contents,
 	//if filteredState == filtering || filterApplied
 	filteredContents []int
+	parentDir        string
 	dirs, files      int
 }
 
@@ -56,6 +56,7 @@ func filterDirContent(term string, targets []string) []int {
 type extendDirModel struct {
 	infoTable                                             table.Model
 	filter                                                textinput.Model
+	titleStyle                                            lipgloss.Style
 	filterState                                           filterState
 	dirContents                                           dirContents
 	dirPath                                               string
@@ -67,7 +68,7 @@ func initialExtendDirModel() extendDirModel {
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
 	)
-	return extendDirModel{infoTable: t, filter: newFilterInputModel()}
+	return extendDirModel{infoTable: t, filter: newFilterInputModel(), titleStyle: titleStyle}
 }
 
 func getTableCols(tableWidth int) []table.Column {
@@ -195,12 +196,12 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 
 	case spaceFocusSwitchMsg:
 		if focusedSpace(msg) == extension {
+			m.updateTitleStyleAsFocus(true)
 			m.infoTable.Focus()
-			//m.focus = true
 		} else {
+			m.updateTitleStyleAsFocus(false)
 			m.resetFilter()
 			m.infoTable.Blur()
-			return m, hideInfoSpaceTitle(false).cmd
 		}
 
 	}
@@ -215,6 +216,11 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 func (m extendDirModel) View() string {
 	help := customInfoTableHelp(m.showHelp)
 	help.Width(m.infoTable.Width())
+	title := "Extended Dir: " + filepath.Base(m.dirPath)
+	tail := "…"
+	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + 1) // +1 experimental
+	title = runewidth.Truncate(title, w, tail)
+	title = m.titleStyle.Render(title)
 
 	status := m.getStatus()
 	status = infoTableStatusBarStyle.Render(status)
@@ -229,7 +235,7 @@ func (m extendDirModel) View() string {
 		}
 		return lipgloss.JoinVertical(lipgloss.Center, c.Render(filter), status, m.infoTable.View(), help.Render())
 	}
-	return lipgloss.JoinVertical(lipgloss.Center, status, m.infoTable.View(), help.Render())
+	return lipgloss.JoinVertical(lipgloss.Center, title, status, m.infoTable.View(), help.Render())
 }
 
 func newFilterInputModel() textinput.Model {
@@ -253,8 +259,23 @@ func (m *extendDirModel) updateDimensions() {
 	m.filter.Width = (w * 60) / 100 // 60% of available width
 	helpHeight := lipgloss.Height(customInfoTableHelp(m.showHelp).String())
 	statusBarHeight := infoTableStatusBarStyle.GetHeight() + infoTableStatusBarStyle.GetVerticalFrameSize()
-	m.infoTable.SetHeight(infoContainerWorkableH(true) - (helpHeight + statusBarHeight))
+	titleHeight := m.titleStyle.GetHeight() + m.titleStyle.GetVerticalFrameSize()
+	m.infoTable.SetHeight(infoContainerWorkableH() - (titleHeight + statusBarHeight + helpHeight))
 	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
+}
+
+func (m *extendDirModel) updateTitleStyleAsFocus(focus bool) {
+	if focus {
+		m.titleStyle = titleStyle.
+			UnsetMarginBottom().
+			Background(highlightColor).
+			Foreground(subduedHighlightColor)
+	} else {
+		m.titleStyle = titleStyle.
+			UnsetMarginBottom().
+			Background(subduedGrayColor).
+			Foreground(highlightColor)
+	}
 }
 
 func (m *extendDirModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
