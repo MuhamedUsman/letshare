@@ -15,7 +15,7 @@ type fsErrMsg string
 
 func (msg fsErrMsg) cmd() tea.Msg { return msg }
 
-// extendDirMsg is sent by the dirNavigationModel to signal extendDirModel
+// extendDirMsg is sent by the dirNavModel to signal extendDirModel
 // to extend selected directory, and whether to make the table focused or not
 type extendDirMsg struct {
 	path string
@@ -39,7 +39,3 @@ func (msg extendSpaceMsg) cmd() tea.Msg { return msg }
 type spaceFocusSwitchMsg focusedSpace
 
 func (msg spaceFocusSwitchMsg) cmd() tea.Msg { return msg }
-
-type hideInfoSpaceTitle bool
-
-func (msg hideInfoSpaceTitle) cmd() tea.Msg { return msg }
