@@ -59,7 +59,7 @@ var ( // mainModel Styles
 		BorderForeground(highlightColor)
 )
 
-var ( // dirNavigationModel Styles
+var ( // dirNavModel Styles
 
 )
 

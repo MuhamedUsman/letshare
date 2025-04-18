@@ -5,12 +5,12 @@ import (
 )
 
 // localExtensionModel manages extensions for the local Space component.
-// the local Space currently contains a single model (dirNavigationModel),
+// the local Space currently contains a single model (dirNavModel),
 // which can be extended with additional functionality. this extension model
 // provides a container for these extensions (currently only extendDirModel).
-// localSpaceModel(dirNavigationModel) ->  localExtensionModel(extendDirModel)
+// localSpaceModel(dirNavModel) ->  localExtensionModel(extendDirModel)
 // tea.Cmd and tea.Msg should be used to communicate between the models and their extensions
-// This architectural pattern separates core navigation (dirNavigationModel) from
+// This architectural pattern separates core navigation (dirNavModel) from
 // extended functionality (extendDirModel), making the codebase more maintainable
 // and extensible. future extensions can be added to this model without modifying
 // the core navigation logic.

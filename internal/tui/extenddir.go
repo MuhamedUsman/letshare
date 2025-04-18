@@ -114,7 +114,6 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 				m.filterState = filterApplied
 				m.filter.Blur()
 				m.infoTable.Focus()
-				return m, hideInfoSpaceTitle(false).cmd
 			}
 			if m.isValidTableShortcut() && m.filterState != filtering {
 				m.infoTable.Focus()
@@ -129,7 +128,8 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 
 		case "up", "down":
 			if m.filterState == filtering {
-				return m, tea.Batch(m.handleInfoTableUpdate(msg), m.applyFilter())
+				m.applyFilter()
+				return m, tea.Batch(m.handleInfoTableUpdate(msg))
 			}
 
 		case "shift+down", "ctrl+down": // select a row and move down
@@ -154,7 +154,7 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 			if m.isValidTableShortcut() {
 				m.filterState = filtering
 				m.infoTable.Blur()
-				return m, tea.Batch(m.filter.Focus(), hideInfoSpaceTitle(true).cmd)
+				return m, m.filter.Focus()
 			}
 
 		case "?":
@@ -169,7 +169,6 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 				m.infoTable.Focus()
 				m.populateTable(m.dirContents.contents)
 			}
-			return m, hideInfoSpaceTitle(false).cmd
 
 		}
 
@@ -406,11 +405,10 @@ func (m *extendDirModel) resetFilter() {
 	m.filterState = unfiltered
 }
 
-func (m *extendDirModel) applyFilter() tea.Cmd {
+func (m *extendDirModel) applyFilter() {
 	m.filter.Blur()
 	m.filterState = filterApplied
 	m.infoTable.Focus()
-	return hideInfoSpaceTitle(false).cmd
 }
 
 func (m *extendDirModel) handleFiltering() tea.Cmd {

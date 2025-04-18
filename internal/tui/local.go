@@ -5,13 +5,13 @@ import (
 )
 
 type localSpaceModel struct {
-	dirNavigation dirNavigationModel
+	dirNavigation dirNavModel
 	disableKeymap bool
 }
 
 func initialLocalSpaceModel() localSpaceModel {
 	return localSpaceModel{
-		dirNavigation: initialDirNavigationModel(),
+		dirNavigation: initialDirNavModel(),
 	}
 }
 

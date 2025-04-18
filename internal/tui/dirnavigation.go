@@ -84,8 +84,8 @@ func (i dirItem) Description() string {
 	return ""
 }
 
-// dirNavigationModel is the main model for the directory navigation view.
-type dirNavigationModel struct {
+// dirNavModel(Directory Navigation Model) is the main model for the directory navigation view.
+type dirNavModel struct {
 	// directory List: children dirs in a parent dirAction
 	dirList list.Model
 	// current directory path
@@ -101,23 +101,23 @@ type dirNavigationModel struct {
 	showHelp, disableKeymap bool
 }
 
-func initialDirNavigationModel() dirNavigationModel {
+func initialDirNavModel() dirNavModel {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = "."
 	}
-	return dirNavigationModel{
+	return dirNavModel{
 		curDirPath:        wd,
 		dirList:           newDirList(),
 		prevSelectedStack: newItemSelectionStack(),
 	}
 }
 
-func (m dirNavigationModel) Init() tea.Cmd {
+func (m dirNavModel) Init() tea.Cmd {
 	return m.readDir(m.curDirPath, noop)
 }
 
-func (m dirNavigationModel) Update(msg tea.Msg) (dirNavigationModel, tea.Cmd) {
+func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
@@ -206,7 +206,7 @@ func (m dirNavigationModel) Update(msg tea.Msg) (dirNavigationModel, tea.Cmd) {
 	return m, m.handleDirListUpdate(msg)
 }
 
-func (m dirNavigationModel) View() string {
+func (m dirNavModel) View() string {
 	if len(m.dirList.Items()) == 0 {
 		m.dirList.SetShowStatusBar(false)
 	} else {
@@ -352,9 +352,9 @@ func customDirListHelpTable(show bool) *table.Table {
 
 }
 
-func (m *dirNavigationModel) updateDimensions() {
+func (m *dirNavModel) updateDimensions() {
 	// sub '1' height for some buggy behaviour of pagination when transitioning from filtering to normal list state,
-	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
+	// if the pagination is visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
 	h := termH - (mainContainerStyle.GetVerticalFrameSize() + smallContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
 	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize() + 1) // +1 experimental
@@ -364,7 +364,7 @@ func (m *dirNavigationModel) updateDimensions() {
 	m.dirList.Styles.TitleBar = m.dirList.Styles.TitleBar.MaxWidth(w)
 }
 
-func (dirNavigationModel) readDir(dir string, action dirAction) tea.Cmd {
+func (dirNavModel) readDir(dir string, action dirAction) tea.Cmd {
 	return func() tea.Msg {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -393,7 +393,7 @@ func (dirNavigationModel) readDir(dir string, action dirAction) tea.Cmd {
 	}
 }
 
-func (m *dirNavigationModel) populateDirList(dirs []string) tea.Cmd {
+func (m *dirNavModel) populateDirList(dirs []string) tea.Cmd {
 	items := make([]list.Item, len(dirs))
 	for i, dir := range dirs {
 		items[i] = dirItem(dir)
@@ -401,7 +401,7 @@ func (m *dirNavigationModel) populateDirList(dirs []string) tea.Cmd {
 	return m.dirList.SetItems(items)
 }
 
-func (m *dirNavigationModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
+func (m *dirNavModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.dirList, cmd = m.dirList.Update(msg)
 	return cmd
@@ -409,8 +409,8 @@ func (m *dirNavigationModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
 
 // getDirListTitle creates a simplified display title for the current directory path,
 // showing only the volume name and the final directory name. Must be called after
-// updating dirNavigationModel.curDirPath.
-func (dirNavigationModel) getDirListTitle(curDirPath string) string {
+// updating dirNavModel.curDirPath.
+func (dirNavModel) getDirListTitle(curDirPath string) string {
 	volName := filepath.VolumeName(curDirPath)
 	selDir := filepath.ToSlash(filepath.Base(curDirPath))
 	c := strings.Count(curDirPath, string(os.PathSeparator))
@@ -424,7 +424,7 @@ func (dirNavigationModel) getDirListTitle(curDirPath string) string {
 }
 
 // getCurDirPath gets the target path based on the navigation action.
-func (m dirNavigationModel) getCurDirPath(da dirAction) string {
+func (m dirNavModel) getCurDirPath(da dirAction) string {
 	switch da {
 	case in:
 		selDir := m.dirList.SelectedItem().FilterValue()
@@ -436,14 +436,14 @@ func (m dirNavigationModel) getCurDirPath(da dirAction) string {
 	}
 }
 
-func (m *dirNavigationModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) tea.Cmd {
+func (m *dirNavModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) tea.Cmd {
 	style := lipgloss.NewStyle().
 		Foreground(c).
 		Italic(true)
 	return m.dirList.NewStatusMessage(style.Render(s))
 }
 
-func (m *dirNavigationModel) setTitleStylesAsFocus() {
+func (m *dirNavModel) setTitleStylesAsFocus() {
 	s := m.dirList.Styles.Title.
 		Background(subduedGrayColor).
 		Foreground(highlightColor)
@@ -455,7 +455,7 @@ func (m *dirNavigationModel) setTitleStylesAsFocus() {
 	m.dirList.Styles.Title = s
 }
 
-func (m *dirNavigationModel) updateKeymap(disable bool) {
+func (m *dirNavModel) updateKeymap(disable bool) {
 	if disable {
 		m.dirList.ResetFilter()
 		m.dirList.KeyMap = list.KeyMap{} // disable list keymap

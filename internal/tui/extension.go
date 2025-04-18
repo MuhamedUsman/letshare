@@ -6,11 +6,11 @@ import (
 )
 
 type extensionSpaceModel struct {
-	localExtension           localExtensionModel
-	titleStyle               lipgloss.Style
-	extendedSpace            focusedSpace
-	dirToExtend              string
-	hideTitle, disableKeymap bool
+	localExtension localExtensionModel
+	titleStyle     lipgloss.Style
+	extendedSpace  focusedSpace
+	dirToExtend    string
+	disableKeymap  bool
 }
 
 func initialExtensionSpaceModel() extensionSpaceModel {
@@ -60,9 +60,6 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		} else {
 			m.updateTitleStyleAsFocus(false)
 		}
-
-	case hideInfoSpaceTitle:
-		m.hideTitle = bool(msg)
 
 	}
 	return m, m.handleChildModelUpdate(msg)
