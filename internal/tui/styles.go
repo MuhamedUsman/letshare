@@ -63,11 +63,11 @@ var ( // mainModel Styles
 		BorderForeground(highlightColor)
 )
 
-var ( // sendModel Styles
+var ( // dirNavigationModel Styles
 
 )
 
-var ( // infoModel Styles
+var ( // extensionSpaceModel Styles
 
 	infoContainerStyle = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder(), false, true).
@@ -120,7 +120,7 @@ var ( // extendDirModel Styles
 					Align(lipgloss.Center)
 )
 
-var ( // receiveModel Styles
+var ( // remoteSpaceModel Styles
 
 )
 
@@ -146,5 +146,5 @@ var ( // confirmDialogModel Styles
 				Background(subduedGrayColor).
 				Foreground(fgColor).
 				Padding(0, 2).
-				MarginRight(1)
+				MarginLeft(1)
 )

@@ -3,7 +3,7 @@ package mdns
 import (
 	"context"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/util"
+	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/grandcat/zeroconf"
 	"strings"
 	"sync"
@@ -23,7 +23,7 @@ type ServiceEntry map[string]string
 // MDNS handles multicast DNS service registration and discovery on local networks.
 // It provides methods to publish services and discover other services.
 type MDNS struct {
-	bt *util.BackgroundTask
+	bt *bgtask.BackgroundTask
 	mu sync.RWMutex
 	// Stores discovered mDNS entries
 	entries ServiceEntry
@@ -38,7 +38,7 @@ type MDNS struct {
 func New() *MDNS {
 	once.Do(func() {
 		mdns = &MDNS{
-			bt:      util.NewBgTask(),
+			bt:      bgtask.New(),
 			entries: make(ServiceEntry),
 		}
 	})

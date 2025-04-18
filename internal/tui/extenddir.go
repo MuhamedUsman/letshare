@@ -3,8 +3,8 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/file"
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
-	"github.com/MuhamedUsman/letshare/internal/util"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -34,7 +34,8 @@ type dirContent struct {
 }
 
 type dirContents struct {
-	contents []dirContent
+	parentDir string
+	contents  []dirContent
 	// indices of filtered contents,
 	//if filteredState == filtering || filterApplied
 	filteredContents []int
@@ -53,15 +54,15 @@ func filterDirContent(term string, targets []string) []int {
 }
 
 type extendDirModel struct {
-	infoTable                                     table.Model
-	filter                                        textinput.Model
-	filterState                                   filterState
-	dirContents                                   dirContents
-	dirPath                                       string
-	filterChanged, focusOnExtend, showHelp, focus bool
+	infoTable                                             table.Model
+	filter                                                textinput.Model
+	filterState                                           filterState
+	dirContents                                           dirContents
+	dirPath                                               string
+	filterChanged, focusOnExtend, showHelp, disableKeymap bool
 }
 
-func initialSendInfoModel() extendDirModel {
+func initialExtendDirModel() extendDirModel {
 	t := table.New(
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
@@ -102,7 +103,7 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-		if currentFocus == confirmation {
+		if m.disableKeymap {
 			return m, nil
 		}
 		switch msg.String() {
@@ -130,7 +131,7 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 				return m, tea.Batch(m.handleInfoTableUpdate(msg), m.applyFilter())
 			}
 
-		case "shift+down", "ctrl+down": // select row & move down
+		case "shift+down", "ctrl+down": // select a row and move down
 			if m.isValidTableShortcut() {
 				m.selectSingle(true)
 				m.infoTable.MoveDown(1)
@@ -156,7 +157,7 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 			}
 
 		case "?":
-			if currentFocus == info && m.filterState != filtering && m.focus {
+			if currentFocus == extension && m.filterState != filtering {
 				m.showHelp = !m.showHelp
 				m.updateDimensions()
 			}
@@ -167,21 +168,20 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 				m.infoTable.Focus()
 				m.populateTable(m.dirContents.contents)
 			}
-			m.infoTable.SetRows(nil)
-			m.infoTable.Blur()
 			return m, hideInfoSpaceTitle(false).cmd
 
 		}
 
 	case extendDirMsg:
-		// user is trying to extend a new dir, but previous extended dir has selected items
+		// the user is trying to extend a new dir, but the previous extended dir has selected items
 		if m.getSelectionCount() > 0 {
-			return m, m.showConfirmationDialog(msg)
+			return m, m.showSelConfirmDialog(msg)
 		}
 		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
 
 	case dirContents:
+		m.dirPath = msg.parentDir
 		m.dirContents = msg
 		m.populateTable(msg.contents)
 		if m.focusOnExtend {
@@ -190,13 +190,13 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 			m.infoTable.Blur()
 		}
 		m.infoTable.SetCursor(0)
-		// if table is focused, then info space also needs to be focused
-		return m, extendSpaceMsg{send, m.focusOnExtend}.cmd
+		// if table is focused, then infoSpace space also needs to be focused
+		return m, extendSpaceMsg{local, m.focusOnExtend}.cmd
 
 	case spaceFocusSwitchMsg:
-		if focusedTab(msg) == info {
+		if focusedSpace(msg) == extension {
 			m.infoTable.Focus()
-			m.focus = true
+			//m.focus = true
 		} else {
 			m.resetFilter()
 			m.infoTable.Blur()
@@ -210,26 +210,6 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 	}
 
 	return m, tea.Batch(m.handleInfoTableUpdate(msg), m.handleFilterInputUpdate(msg))
-}
-
-func (m extendDirModel) showConfirmationDialog(msg tea.Msg) tea.Cmd {
-	var yupFunc, nopeFunc func() tea.Cmd
-	var header, body string
-	var selBtn confirmationCursor
-
-	switch msg := msg.(type) {
-	case extendDirMsg:
-		selBtn = yup
-		header = "ARE YOU SURE?"
-		body = "All the selections will be lost..."
-		yupFunc = func() tea.Cmd {
-			m.focusOnExtend = msg.focus
-			return m.readDir(msg.path)
-		}
-		nopeFunc = func() tea.Cmd { return nil }
-	}
-
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc)
 }
 
 func (m extendDirModel) View() string {
@@ -307,7 +287,7 @@ func (extendDirModel) readDir(path string) tea.Cmd {
 			}.cmd
 		}
 
-		dc := dirContents{contents: make([]dirContent, len(entries))}
+		dc := dirContents{parentDir: path, contents: make([]dirContent, len(entries))}
 
 		for i, entry := range entries {
 			eInfo, _ := entry.Info()
@@ -321,7 +301,7 @@ func (extendDirModel) readDir(path string) tea.Cmd {
 				name = entry.Name()
 				filetype = ""
 			}
-			size := util.UserFriendlyFilesize(eInfo.Size())
+			size := file.HumanizeSize(eInfo.Size())
 
 			if entry.IsDir() {
 				name = entry.Name()
@@ -372,7 +352,7 @@ func (m *extendDirModel) populateTable(contents []dirContent) {
 }
 
 func (m extendDirModel) isValidTableShortcut() bool {
-	return currentFocus == info && m.infoTable.Focused() && len(m.infoTable.Rows()) > 0
+	return currentFocus == extension && m.infoTable.Focused() && len(m.infoTable.Rows()) > 0
 }
 
 func (m *extendDirModel) selectAll(selection bool) {
@@ -405,7 +385,7 @@ func (m *extendDirModel) resetFilter() {
 	m.filterState = unfiltered
 }
 
-func (m extendDirModel) applyFilter() tea.Cmd {
+func (m *extendDirModel) applyFilter() tea.Cmd {
 	m.filter.Blur()
 	m.filterState = filterApplied
 	m.infoTable.Focus()
@@ -425,6 +405,12 @@ func (m *extendDirModel) handleFiltering() tea.Cmd {
 	m.dirContents.filteredContents = indices
 	m.populateTable(m.dirContents.contents)
 	return nil
+}
+
+func (m *extendDirModel) resetSelections() {
+	for i := range m.dirContents.contents {
+		m.dirContents.contents[i].selection = false
+	}
 }
 
 func (m extendDirModel) getStatus() string {
@@ -462,6 +448,48 @@ func (m extendDirModel) getSelectionCount() int {
 		}
 	}
 	return count
+}
+
+func (m *extendDirModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
+	selBtn := yup
+	header := "ARE YOU SURE?"
+	body := "All the selections will be lost..."
+	yupFunc := func() tea.Cmd {
+		m.focusOnExtend = msg.focus
+		return m.readDir(msg.path)
+	}
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+}
+
+func (m *extendDirModel) grantExtensionSwitch(space focusedSpace) tea.Cmd {
+	// when filtering, we will not grant an extension switch
+	if m.filterState != unfiltered {
+		return nil
+	}
+	cmd := extendSpaceMsg{space, true}.cmd
+	if m.getSelectionCount() == 0 {
+		return cmd
+	}
+	selBtn := yup
+	header := "ARE YOU SURE?"
+	body := "All the selections will be lost..."
+	yupFunc := func() tea.Cmd {
+		m.resetSelections()
+		return cmd
+	}
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+}
+
+func (m extendDirModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
+	if m.filterState != unfiltered {
+		return nil
+	}
+	currentFocus = space
+	return spaceFocusSwitchMsg(space).cmd
+}
+
+func (m *extendDirModel) updateKeymap(disable bool) {
+	m.disableKeymap = disable
 }
 
 func customInfoTableHelp(show bool) *lipTable.Table {

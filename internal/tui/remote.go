@@ -6,30 +6,34 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-type receiveModel struct {
-	titleStyle lipgloss.Style
+type remoteSpaceModel struct {
+	titleStyle    lipgloss.Style
+	disableKeymap bool
 }
 
-func initialReceiveModel() receiveModel {
-	return receiveModel{
+func initialRemoteSpaceModel() remoteSpaceModel {
+	return remoteSpaceModel{
 		titleStyle: titleStyle.Margin(0, 2),
 	}
 }
 
-func (m receiveModel) Init() tea.Cmd {
+func (m remoteSpaceModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
+func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
 		m.updateDimensions()
 
 	case tea.KeyMsg:
+		if m.disableKeymap {
+			return m, nil
+		}
 
 	case spaceFocusSwitchMsg:
-		if focusedTab(msg) == receive {
+		if focusedSpace(msg) == remote {
 			m.titleStyle = titleStyle.
 				Background(highlightColor).
 				Foreground(subduedHighlightColor)
@@ -43,12 +47,12 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 	return m, nil
 }
 
-func (m receiveModel) View() string {
+func (m remoteSpaceModel) View() string {
 	s := m.titleStyle.Render("Remote Space")
 	s = runewidth.Truncate(s, runewidth.StringWidth(s), "…")
 	return smallContainerStyle.Render(s)
 }
 
-func (m *receiveModel) updateDimensions() {
+func (m *remoteSpaceModel) updateDimensions() {
 
 }

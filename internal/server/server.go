@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/domain"
-	"github.com/MuhamedUsman/letshare/internal/util"
+	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/justinas/alice"
 	"io"
 	"log"
@@ -31,7 +31,7 @@ type Server struct {
 	// Cancel func for StopCtx
 	StopCtxCancel context.CancelFunc
 	// Every Goroutine must run through BT Run function
-	BT *util.BackgroundTask
+	BT *bgtask.BackgroundTask
 	mu *sync.Mutex
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
@@ -40,7 +40,7 @@ type Server struct {
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		BT:            util.NewBgTask(),
+		BT:            bgtask.New(),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),

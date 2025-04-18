@@ -79,13 +79,13 @@ func (i dirItem) Title() string {
 	return string(i)
 }
 
-// Description is noop, just to satisfy internal interface
+// Description is noop, just to satisfy the internal interface
 func (i dirItem) Description() string {
 	return ""
 }
 
-// sendModel is the main model for the directory navigation view.
-type sendModel struct {
+// dirNavigationModel is the main model for the directory navigation view.
+type dirNavigationModel struct {
 	// directory List: children dirs in a parent dirAction
 	dirList list.Model
 	// current directory path
@@ -95,29 +95,29 @@ type sendModel struct {
 	// if prevSelDir == dirList.SelectedItem()
 	// the key action is valid
 	prevSelDir string
-	// Toggle for help display
-	showHelp bool
 	// Tracks position when navigating directories
 	prevSelectedStack itemSelectionStack
+	// Toggle for help display and keymap disable
+	showHelp, disableKeymap bool
 }
 
-func initialSendModel() sendModel {
+func initialDirNavigationModel() dirNavigationModel {
 	wd, err := os.Getwd()
 	if err != nil {
 		wd = "."
 	}
-	return sendModel{
+	return dirNavigationModel{
 		curDirPath:        wd,
 		dirList:           newDirList(),
 		prevSelectedStack: newItemSelectionStack(),
 	}
 }
 
-func (m sendModel) Init() tea.Cmd {
+func (m dirNavigationModel) Init() tea.Cmd {
 	return m.readDir(m.curDirPath, noop)
 }
 
-func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
+func (m dirNavigationModel) Update(msg tea.Msg) (dirNavigationModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
@@ -125,40 +125,41 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.updateDimensions()
 
 	case tea.KeyMsg:
-		if currentFocus == send {
-			switch msg.String() {
+		if m.disableKeymap {
+			return m, nil
+		}
+		switch msg.String() {
 
-			case "enter":
-				if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
-					selDir := m.dirList.SelectedItem().FilterValue()
-					selDir = filepath.Join(m.curDirPath, selDir) // Dir in
-					return m, m.readDir(selDir, in)
-				}
-
-			case "backspace":
-				if m.dirList.FilterState() == list.Unfiltered {
-					dirOut := filepath.Dir(m.curDirPath) // Dir out
-					if m.curDirPath == dirOut {
-						return m, m.createDirListStatusMsg("Drive Root!", highlightColor)
-					}
-					return m, m.readDir(dirOut, out)
-				}
-
-			case " ": // space
+		case "enter":
+			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
 				selDir := m.dirList.SelectedItem().FilterValue()
-				selPath := filepath.Join(m.curDirPath, selDir)
-				// double spaceBar action is valid
-				if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
-					return m, extendDirMsg{selPath, true}.cmd
-				}
-				m.prevSelDir = selDir // registering first spaceBar action
-				return m, extendDirMsg{selPath, false}.cmd
-
-			case "?":
-				m.showHelp = !m.showHelp
-				m.updateDimensions()
-
+				selDir = filepath.Join(m.curDirPath, selDir) // Dir in
+				return m, m.readDir(selDir, in)
 			}
+
+		case "backspace":
+			if m.dirList.FilterState() == list.Unfiltered {
+				dirOut := filepath.Dir(m.curDirPath) // Dir out
+				if m.curDirPath == dirOut {
+					return m, m.createDirListStatusMsg("Drive Root!", highlightColor)
+				}
+				return m, m.readDir(dirOut, out)
+			}
+
+		case " ": // space
+			selDir := m.dirList.SelectedItem().FilterValue()
+			selPath := filepath.Join(m.curDirPath, selDir)
+			// double spaceBar action is valid
+			if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
+				return m, extendDirMsg{selPath, true}.cmd
+			}
+			m.prevSelDir = selDir // registering first spaceBar action
+			return m, extendDirMsg{selPath, false}.cmd
+
+		case "?":
+			m.showHelp = !m.showHelp
+			m.updateDimensions()
+
 		}
 
 	case dirEntryMsg:
@@ -185,7 +186,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		return m, m.populateDirList(msg.entries)
 
 	case spaceFocusSwitchMsg:
-		if focusedTab(msg) == send {
+		if focusedSpace(msg) == local {
 			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
 			m.dirList.DisableQuitKeybindings()
 		} else {
@@ -205,7 +206,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 	return m, m.handleDirListUpdate(msg)
 }
 
-func (m sendModel) View() string {
+func (m dirNavigationModel) View() string {
 	if len(m.dirList.Items()) == 0 {
 		m.dirList.SetShowStatusBar(false)
 	} else {
@@ -351,7 +352,7 @@ func customDirListHelpTable(show bool) *table.Table {
 
 }
 
-func (m *sendModel) updateDimensions() {
+func (m *dirNavigationModel) updateDimensions() {
 	// sub '1' height for some buggy behaviour of pagination when transitioning from filtering to normal list state,
 	// if the pagination will be visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
@@ -363,7 +364,7 @@ func (m *sendModel) updateDimensions() {
 	m.dirList.Styles.TitleBar = m.dirList.Styles.TitleBar.MaxWidth(w)
 }
 
-func (sendModel) readDir(dir string, action dirAction) tea.Cmd {
+func (dirNavigationModel) readDir(dir string, action dirAction) tea.Cmd {
 	return func() tea.Msg {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -392,7 +393,7 @@ func (sendModel) readDir(dir string, action dirAction) tea.Cmd {
 	}
 }
 
-func (m *sendModel) populateDirList(dirs []string) tea.Cmd {
+func (m *dirNavigationModel) populateDirList(dirs []string) tea.Cmd {
 	items := make([]list.Item, len(dirs))
 	for i, dir := range dirs {
 		items[i] = dirItem(dir)
@@ -400,7 +401,7 @@ func (m *sendModel) populateDirList(dirs []string) tea.Cmd {
 	return m.dirList.SetItems(items)
 }
 
-func (m *sendModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
+func (m *dirNavigationModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.dirList, cmd = m.dirList.Update(msg)
 	return cmd
@@ -408,8 +409,8 @@ func (m *sendModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
 
 // getDirListTitle creates a simplified display title for the current directory path,
 // showing only the volume name and the final directory name. Must be called after
-// updating sendModel.curDirPath.
-func (sendModel) getDirListTitle(curDirPath string) string {
+// updating dirNavigationModel.curDirPath.
+func (dirNavigationModel) getDirListTitle(curDirPath string) string {
 	volName := filepath.VolumeName(curDirPath)
 	selDir := filepath.ToSlash(filepath.Base(curDirPath))
 	c := strings.Count(curDirPath, string(os.PathSeparator))
@@ -423,7 +424,7 @@ func (sendModel) getDirListTitle(curDirPath string) string {
 }
 
 // getCurDirPath gets the target path based on the navigation action.
-func (m sendModel) getCurDirPath(da dirAction) string {
+func (m dirNavigationModel) getCurDirPath(da dirAction) string {
 	switch da {
 	case in:
 		selDir := m.dirList.SelectedItem().FilterValue()
@@ -435,21 +436,32 @@ func (m sendModel) getCurDirPath(da dirAction) string {
 	}
 }
 
-func (m *sendModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) tea.Cmd {
+func (m *dirNavigationModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor) tea.Cmd {
 	style := lipgloss.NewStyle().
 		Foreground(c).
 		Italic(true)
 	return m.dirList.NewStatusMessage(style.Render(s))
 }
 
-func (m *sendModel) setTitleStylesAsFocus() {
+func (m *dirNavigationModel) setTitleStylesAsFocus() {
 	s := m.dirList.Styles.Title.
 		Background(subduedGrayColor).
 		Foreground(highlightColor)
-	if currentFocus == send {
+	if currentFocus == local {
 		s = m.dirList.Styles.Title.
 			Background(highlightColor).
 			Foreground(subduedHighlightColor)
 	}
 	m.dirList.Styles.Title = s
+}
+
+func (m *dirNavigationModel) updateKeymap(disable bool) {
+	if disable {
+		m.dirList.ResetFilter()
+		m.dirList.KeyMap = list.KeyMap{} // disable list keymap
+	} else {
+		m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
+		m.dirList.DisableQuitKeybindings()
+	}
+	m.disableKeymap = disable
 }
