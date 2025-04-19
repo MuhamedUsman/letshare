@@ -22,7 +22,7 @@ func (m remoteSpaceModel) Init() tea.Cmd {
 }
 
 func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch msg.(type) {
 
 	case tea.WindowSizeMsg:
 		m.updateDimensions()
@@ -33,7 +33,7 @@ func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
 		}
 
 	case spaceFocusSwitchMsg:
-		if focusedSpace(msg) == remote {
+		if currentFocus == remote {
 			m.titleStyle = titleStyle.
 				Background(highlightColor).
 				Foreground(subduedHighlightColor)

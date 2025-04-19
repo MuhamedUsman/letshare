@@ -36,6 +36,6 @@ type extendSpaceMsg struct {
 func (msg extendSpaceMsg) cmd() tea.Msg { return msg }
 
 // spaceFocusSwitchMsg manages space switching using tab & shift+tab
-type spaceFocusSwitchMsg focusedSpace
+type spaceFocusSwitchMsg struct{}
 
-func (msg spaceFocusSwitchMsg) cmd() tea.Msg { return msg }
+func spaceFocusSwitchCmd() tea.Msg { return spaceFocusSwitchMsg{} }

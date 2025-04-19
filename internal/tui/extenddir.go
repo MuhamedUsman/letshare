@@ -190,11 +190,11 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 			m.infoTable.Blur()
 		}
 		m.infoTable.SetCursor(0)
-		// if table is focused, then infoSpace space also needs to be focused
+		// if table is focused, then extensionSpace space also needs to be focused
 		return m, extendSpaceMsg{local, m.focusOnExtend}.cmd
 
 	case spaceFocusSwitchMsg:
-		if focusedSpace(msg) == extension {
+		if currentFocus == extension {
 			m.updateTitleStyleAsFocus(true)
 			m.infoTable.Focus()
 		} else {
@@ -504,7 +504,7 @@ func (m extendDirModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
 		return nil
 	}
 	currentFocus = space
-	return spaceFocusSwitchMsg(space).cmd
+	return spaceFocusSwitchCmd
 }
 
 func (m *extendDirModel) updateKeymap(disable bool) {

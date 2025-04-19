@@ -51,11 +51,11 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 		if msg.focus {
 			currentFocus = extension
-			return m, spaceFocusSwitchMsg(extension).cmd
+			return m, spaceFocusSwitchCmd
 		}
 
 	case spaceFocusSwitchMsg:
-		if focusedSpace(msg) == extension {
+		if currentFocus == extension {
 			m.updateTitleStyleAsFocus(true)
 		} else {
 			m.updateTitleStyleAsFocus(false)

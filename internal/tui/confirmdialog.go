@@ -95,7 +95,7 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 		m.render = true
 		m.prevFocus = currentFocus
 		currentFocus = confirmation
-		return m, spaceFocusSwitchMsg(confirmation).cmd
+		return m, spaceFocusSwitchCmd
 	}
 
 	return m, nil
@@ -140,7 +140,7 @@ func (m *confirmDialogModel) hide() tea.Cmd {
 	m.header, m.body = "", ""
 	m.yupFunc, m.nopeFunc = nil, nil
 	currentFocus = m.prevFocus
-	return spaceFocusSwitchMsg(m.prevFocus).cmd
+	return spaceFocusSwitchCmd
 }
 
 func isEven(n int) bool {
