@@ -186,7 +186,7 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 		return m, m.populateDirList(msg.entries)
 
 	case spaceFocusSwitchMsg:
-		if focusedSpace(msg) == local {
+		if currentFocus == local {
 			m.dirList.KeyMap = list.DefaultKeyMap() // enable list keymaps
 			m.dirList.DisableQuitKeybindings()
 		} else {
