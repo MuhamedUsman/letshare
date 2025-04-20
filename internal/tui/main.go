@@ -10,7 +10,7 @@ type focusedSpace int
 
 const (
 	// No focusedSpace
-	home focusedSpace = iota
+	none focusedSpace = iota
 	local
 	extension
 	remote
@@ -87,15 +87,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MainModel) View() string {
-	subW := mainContainerStyle.GetHorizontalFrameSize()
-	subH := mainContainerStyle.GetVerticalFrameSize()
 	c := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
 	if m.confirmation.render {
 		w, h := mainContainerStyle.GetFrameSize()
 		w, h = termW-w, termH-h
 		c = overlay.Place(w, h, lipgloss.Center, lipgloss.Center, c, m.confirmation.View())
 	}
-	return mainContainerStyle.Width(termW - subW).Height(termH - subH).Render(c)
+	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(c)
 }
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {

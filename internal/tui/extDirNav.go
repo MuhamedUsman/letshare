@@ -53,8 +53,8 @@ func filterDirContent(term string, targets []string) []int {
 	return result
 }
 
-type extendDirModel struct {
-	infoTable                                             table.Model
+type extDirNavModel struct {
+	extDirTable                                           table.Model
 	filter                                                textinput.Model
 	titleStyle                                            lipgloss.Style
 	filterState                                           filterState
@@ -63,12 +63,12 @@ type extendDirModel struct {
 	filterChanged, focusOnExtend, showHelp, disableKeymap bool
 }
 
-func initialExtendDirModel() extendDirModel {
+func initialExtDirNavModel() extDirNavModel {
 	t := table.New(
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
 	)
-	return extendDirModel{infoTable: t, filter: newFilterInputModel(), titleStyle: titleStyle}
+	return extDirNavModel{extDirTable: t, filter: newFilterInputModel(), titleStyle: titleStyle}
 }
 
 func getTableCols(tableWidth int) []table.Column {
@@ -92,11 +92,11 @@ func getTableCols(tableWidth int) []table.Column {
 	}
 }
 
-func (m extendDirModel) Init() tea.Cmd {
+func (m extDirNavModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
+func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
@@ -113,11 +113,11 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 			if m.filterState == filtering {
 				m.filterState = filterApplied
 				m.filter.Blur()
-				m.infoTable.Focus()
+				m.extDirTable.Focus()
 			}
 			if m.isValidTableShortcut() && m.filterState != filtering {
-				m.infoTable.Focus()
-				sel := m.infoTable.Cursor()
+				m.extDirTable.Focus()
+				sel := m.extDirTable.Cursor()
 				if m.filterState != unfiltered {
 					// if filtering OR filterApplied then sel changes based on filtered indices
 					sel = m.dirContents.filteredContents[sel]
@@ -135,13 +135,13 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 		case "shift+down", "ctrl+down": // select a row and move down
 			if m.isValidTableShortcut() {
 				m.selectSingle(true)
-				m.infoTable.MoveDown(1)
+				m.extDirTable.MoveDown(1)
 			}
 
 		case "shift+up", "ctrl+up": // undo selection & move up
 			if m.isValidTableShortcut() {
 				m.selectSingle(false)
-				m.infoTable.MoveUp(1)
+				m.extDirTable.MoveUp(1)
 			}
 
 		case "ctrl+a":
@@ -150,15 +150,19 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 		case "ctrl+z":
 			m.selectAll(false)
 
+		case "ctrl+s":
+			prepMsg := m.assemblePrepSelMsg()
+			return m, prepMsg.cmd
+
 		case "/":
 			if m.isValidTableShortcut() {
 				m.filterState = filtering
-				m.infoTable.Blur()
+				m.extDirTable.Blur()
 				return m, m.filter.Focus()
 			}
 
 		case "?":
-			if currentFocus == extension && m.filterState != filtering {
+			if m.filterState != filtering {
 				m.showHelp = !m.showHelp
 				m.updateDimensions()
 			}
@@ -166,7 +170,7 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 		case "esc":
 			if m.filterState != unfiltered {
 				m.resetFilter()
-				m.infoTable.Focus()
+				m.extDirTable.Focus()
 				m.populateTable(m.dirContents.contents)
 			}
 
@@ -185,22 +189,22 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 		m.dirContents = msg
 		m.populateTable(msg.contents)
 		if m.focusOnExtend {
-			m.infoTable.Focus()
+			m.extDirTable.Focus()
 		} else {
-			m.infoTable.Blur()
+			m.extDirTable.Blur()
 		}
-		m.infoTable.SetCursor(0)
-		// if table is focused, then extensionSpace space also needs to be focused
-		return m, extendSpaceMsg{local, m.focusOnExtend}.cmd
+		m.extDirTable.SetCursor(0)
+		// if table is focused, then extensionSpace child also needs to be focused
+		return m, extendChildMsg{extDirNav, m.focusOnExtend}.cmd
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
 			m.updateTitleStyleAsFocus(true)
-			m.infoTable.Focus()
+			m.extDirTable.Focus()
 		} else {
 			m.updateTitleStyleAsFocus(false)
 			m.resetFilter()
-			m.infoTable.Blur()
+			m.extDirTable.Blur()
 		}
 
 	}
@@ -212,29 +216,29 @@ func (m extendDirModel) Update(msg tea.Msg) (extendDirModel, tea.Cmd) {
 	return m, tea.Batch(m.handleInfoTableUpdate(msg), m.handleFilterInputUpdate(msg))
 }
 
-func (m extendDirModel) View() string {
-	help := customInfoTableHelp(m.showHelp)
-	help.Width(m.infoTable.Width())
+func (m extDirNavModel) View() string {
+	help := customExtDirTableHelp(m.showHelp)
+	help.Width(largeContainerW())
 	title := "Extended Dir: " + filepath.Base(m.dirPath)
 	tail := "…"
-	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + 1) // +1 experimental
+	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + lipgloss.Width(tail))
 	title = runewidth.Truncate(title, w, tail)
 	title = m.titleStyle.Render(title)
 
 	status := m.getStatus()
-	status = infoTableStatusBarStyle.Render(status)
+	status = extStatusBarStyle.Render(status)
 
 	if m.filter.Focused() {
 		filter := m.filter.View()
-		c := infoTableFilterContainerStyle.Width(m.filter.Width)
+		c := extDirNavTableFilterContainerStyle.Width(m.filter.Width)
 		// Match container width to input field width, but increment by 1 when text exceeds
 		// container width to accommodate cursor. This prevents initial centering issues.
 		if utf8.RuneCountInString(m.filter.Value()) >= c.GetWidth() {
 			c = c.Width(c.GetWidth() + 1)
 		}
-		return lipgloss.JoinVertical(lipgloss.Center, c.Render(filter), status, m.infoTable.View(), help.Render())
+		return lipgloss.JoinVertical(lipgloss.Center, c.Render(filter), status, m.extDirTable.View(), help.Render())
 	}
-	return lipgloss.JoinVertical(lipgloss.Center, title, status, m.infoTable.View(), help.Render())
+	return lipgloss.JoinVertical(lipgloss.Center, title, status, m.extDirTable.View(), help.Render())
 }
 
 func newFilterInputModel() textinput.Model {
@@ -252,18 +256,18 @@ func newFilterInputModel() textinput.Model {
 	return f
 }
 
-func (m *extendDirModel) updateDimensions() {
-	w := largeContainerW() - (infoContainerStyle.GetHorizontalFrameSize())
-	m.infoTable.SetWidth(w + 2)
+func (m *extDirNavModel) updateDimensions() {
+	w := largeContainerW() - largeContainerStyle.GetHorizontalFrameSize()
+	m.extDirTable.SetWidth(w + 2)
 	m.filter.Width = (w * 60) / 100 // 60% of available width
-	helpHeight := lipgloss.Height(customInfoTableHelp(m.showHelp).String())
-	statusBarHeight := infoTableStatusBarStyle.GetHeight() + infoTableStatusBarStyle.GetVerticalFrameSize()
+	helpHeight := lipgloss.Height(customExtDirTableHelp(m.showHelp).String())
+	statusBarHeight := extStatusBarStyle.GetHeight() + extStatusBarStyle.GetVerticalFrameSize()
 	titleHeight := m.titleStyle.GetHeight() + m.titleStyle.GetVerticalFrameSize()
-	m.infoTable.SetHeight(infoContainerWorkableH() - (titleHeight + statusBarHeight + helpHeight))
-	m.infoTable.SetColumns(getTableCols(m.infoTable.Width()))
+	m.extDirTable.SetHeight(extContainerWorkableH() - (titleHeight + statusBarHeight + helpHeight))
+	m.extDirTable.SetColumns(getTableCols(m.extDirTable.Width()))
 }
 
-func (m *extendDirModel) updateTitleStyleAsFocus(focus bool) {
+func (m *extDirNavModel) updateTitleStyleAsFocus(focus bool) {
 	if focus {
 		m.titleStyle = titleStyle.
 			UnsetMarginBottom().
@@ -277,21 +281,21 @@ func (m *extendDirModel) updateTitleStyleAsFocus(focus bool) {
 	}
 }
 
-func (m *extendDirModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
+func (m *extDirNavModel) handleInfoTableUpdate(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	m.infoTable, cmd = m.infoTable.Update(msg)
+	m.extDirTable, cmd = m.extDirTable.Update(msg)
 	return cmd
 }
 
 // handle update while also evaluating if the filter is changed
-func (m *extendDirModel) handleFilterInputUpdate(msg tea.Msg) tea.Cmd {
+func (m *extDirNavModel) handleFilterInputUpdate(msg tea.Msg) tea.Cmd {
 	newModel, cmd := m.filter.Update(msg)
 	m.filterChanged = m.filter.Value() != newModel.Value()
 	m.filter = newModel
 	return cmd
 }
 
-func (extendDirModel) readDir(path string) tea.Cmd {
+func (extDirNavModel) readDir(path string) tea.Cmd {
 	return func() tea.Msg {
 		entries, err := os.ReadDir(path)
 		if err != nil {
@@ -345,7 +349,7 @@ func (extendDirModel) readDir(path string) tea.Cmd {
 	}
 }
 
-func (m *extendDirModel) populateTable(contents []dirContent) {
+func (m *extDirNavModel) populateTable(contents []dirContent) {
 	// case of filtering && there is some input to filter against
 	if m.filterState != unfiltered && utf8.RuneCountInString(m.filter.Value()) > 0 {
 		rows := make([]table.Row, 0, len(contents))
@@ -356,7 +360,7 @@ func (m *extendDirModel) populateTable(contents []dirContent) {
 			}
 			rows = append(rows, table.Row{sel, contents[i].name, contents[i].ext, contents[i].size})
 		}
-		m.infoTable.SetRows(rows)
+		m.extDirTable.SetRows(rows)
 		return
 	}
 	// case of unfiltered
@@ -368,14 +372,14 @@ func (m *extendDirModel) populateTable(contents []dirContent) {
 		}
 		rows[i] = table.Row{sel, content.name, content.ext, content.size}
 	}
-	m.infoTable.SetRows(rows)
+	m.extDirTable.SetRows(rows)
 }
 
-func (m extendDirModel) isValidTableShortcut() bool {
-	return currentFocus == extension && m.infoTable.Focused() && len(m.infoTable.Rows()) > 0
+func (m extDirNavModel) isValidTableShortcut() bool {
+	return currentFocus == extension && m.extDirTable.Focused() && len(m.extDirTable.Rows()) > 0
 }
 
-func (m *extendDirModel) selectAll(selection bool) {
+func (m *extDirNavModel) selectAll(selection bool) {
 	if m.isValidTableShortcut() {
 		if m.filterState != unfiltered {
 			for _, i := range m.dirContents.filteredContents {
@@ -390,8 +394,8 @@ func (m *extendDirModel) selectAll(selection bool) {
 	}
 }
 
-func (m *extendDirModel) selectSingle(selection bool) {
-	sel := m.infoTable.Cursor()
+func (m *extDirNavModel) selectSingle(selection bool) {
+	sel := m.extDirTable.Cursor()
 	if m.filterState != unfiltered {
 		sel = m.dirContents.filteredContents[sel]
 	}
@@ -399,23 +403,23 @@ func (m *extendDirModel) selectSingle(selection bool) {
 	m.populateTable(m.dirContents.contents)
 }
 
-func (m *extendDirModel) resetFilter() {
+func (m *extDirNavModel) resetFilter() {
 	m.filter.Reset()
 	m.filter.Blur()
 	m.filterState = unfiltered
 }
 
-func (m *extendDirModel) applyFilter() {
+func (m *extDirNavModel) applyFilter() {
 	m.filter.Blur()
 	m.filterState = filterApplied
-	m.infoTable.Focus()
+	m.extDirTable.Focus()
 }
 
-func (m *extendDirModel) handleFiltering() tea.Cmd {
+func (m *extDirNavModel) handleFiltering() tea.Cmd {
 	if !m.filterChanged {
 		return nil
 	}
-	m.infoTable.SetCursor(0) // reset cursor, if filter changed
+	m.extDirTable.SetCursor(0) // reset cursor, if filter changed
 	toFilter := make([]string, len(m.dirContents.contents))
 	for i, content := range m.dirContents.contents {
 		toFilter[i] = content.name
@@ -426,13 +430,13 @@ func (m *extendDirModel) handleFiltering() tea.Cmd {
 	return nil
 }
 
-func (m *extendDirModel) resetSelections() {
+func (m *extDirNavModel) resetSelections() {
 	for i := range m.dirContents.contents {
 		m.dirContents.contents[i].selection = false
 	}
 }
 
-func (m extendDirModel) getStatus() string {
+func (m extDirNavModel) getStatus() string {
 	// unfiltered
 	status := fmt.Sprintf("%d Dir/s • %d File/s • %d Total",
 		m.dirContents.dirs, m.dirContents.files, len(m.dirContents.contents))
@@ -442,7 +446,7 @@ func (m extendDirModel) getStatus() string {
 			m.dirContents.dirs, m.dirContents.files, selectCount, len(m.dirContents.contents))
 	}
 	if utf8.RuneCountInString(m.filter.Value()) == 0 {
-		return status
+		return runewidth.Truncate(status, largeContainerW()-4, "…") // -4 for tail, extensionContainer & statusBar frame size
 	}
 	matches := "Nothing matched"
 	filtered := len(m.dirContents.contents)
@@ -456,10 +460,10 @@ func (m extendDirModel) getStatus() string {
 	if m.filterState == filterApplied {
 		status = fmt.Sprintf("“%s” %s", m.filter.Value(), status)
 	}
-	return runewidth.Truncate(status, largeContainerW()-4, "…") // -4 for tail, infoContainer & statusBar frame size
+	return runewidth.Truncate(status, largeContainerW()-4, "…") // -4 for tail, extensionContainer & statusBar frame size
 }
 
-func (m extendDirModel) getSelectionCount() int {
+func (m extDirNavModel) getSelectionCount() int {
 	count := 0
 	for _, content := range m.dirContents.contents {
 		if content.selection {
@@ -469,7 +473,7 @@ func (m extendDirModel) getSelectionCount() int {
 	return count
 }
 
-func (m *extendDirModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
+func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 	selBtn := yup
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
@@ -480,12 +484,12 @@ func (m *extendDirModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
 }
 
-func (m *extendDirModel) grantExtensionSwitch(space focusedSpace) tea.Cmd {
+func (m *extDirNavModel) grantExtensionSwitch(space extChild) tea.Cmd {
 	// when filtering, we will not grant an extension switch
 	if m.filterState != unfiltered {
 		return nil
 	}
-	cmd := extendSpaceMsg{space, true}.cmd
+	cmd := extendChildMsg{space, true}.cmd
 	if m.getSelectionCount() == 0 {
 		return cmd
 	}
@@ -499,7 +503,7 @@ func (m *extendDirModel) grantExtensionSwitch(space focusedSpace) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
 }
 
-func (m extendDirModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
+func (m extDirNavModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
 	if m.filterState != unfiltered {
 		return nil
 	}
@@ -507,11 +511,33 @@ func (m extendDirModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
 	return spaceFocusSwitchCmd
 }
 
-func (m *extendDirModel) updateKeymap(disable bool) {
+func (m *extDirNavModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 }
 
-func customInfoTableHelp(show bool) *lipTable.Table {
+func (m extDirNavModel) assemblePrepSelMsg() processSelectionsMsg {
+	filenames := make([]string, 0, len(m.dirContents.contents))
+	dirs, files := 0, 0
+	for _, content := range m.dirContents.contents {
+		if content.selection {
+			filenames = append(filenames, content.name)
+			if content.ext == "dir" {
+				dirs++
+			} else {
+				files++
+			}
+		}
+	}
+	prepMsg := processSelectionsMsg{
+		parentPath: m.dirPath,
+		filenames:  filenames,
+		dirs:       dirs,
+		files:      files,
+	}
+	return prepMsg
+}
+
+func customExtDirTableHelp(show bool) *lipTable.Table {
 	baseStyle := lipgloss.NewStyle().Margin(0, 2)
 	var rows [][]string
 	if !show {
@@ -527,7 +553,7 @@ func customInfoTableHelp(show bool) *lipTable.Table {
 			{"/", "filter"},
 			{"esc", "exit filtering"},
 			{"b/pgup", "page up"},
-			{"f/space", "page down"},
+			{"f/child", "page down"},
 			{"g/home", "go to start"},
 			{"G/end", "go to end"},
 			{"?", "hide help"},

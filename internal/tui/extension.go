@@ -5,23 +5,35 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type extChild = int
+
+const (
+	home extChild = iota
+	extDirNav
+	preference
+)
+
 type extensionSpaceModel struct {
-	localExtension localExtensionModel
-	titleStyle     lipgloss.Style
-	extendedSpace  focusedSpace
-	dirToExtend    string
-	disableKeymap  bool
+	extDirNav     extDirNavModel
+	preference    preferenceModel
+	titleStyle    lipgloss.Style
+	extendedSpace focusedSpace
+	dirToExtend   string
+	activeChild   extChild
+	disableKeymap bool
 }
 
 func initialExtensionSpaceModel() extensionSpaceModel {
 	return extensionSpaceModel{
-		localExtension: initialLocalExtensionModel(),
-		titleStyle:     titleStyle,
+		extDirNav:   initialExtDirNavModel(),
+		preference:  initialPreferenceModel(),
+		titleStyle:  titleStyle,
+		activeChild: extDirNav,
 	}
 }
 
 func (m extensionSpaceModel) Init() tea.Cmd {
-	return m.localExtension.Init()
+	return m.extDirNav.Init()
 }
 
 func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) {
@@ -37,16 +49,16 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		case "esc":
 			// this must be run in a sequence, we need to get grant access on
 			// current state of the localExtension model before it handles esc key msg
-			return m, tea.Sequence(m.localExtension.grantExtensionSwitch(home), m.handleChildModelUpdate(msg))
+			return m, tea.Sequence(m.grantExtensionSwitch(home), m.handleChildModelUpdate(msg))
 
 		case "backspace":
-			return m, tea.Sequence(m.localExtension.grantSpaceFocusSwitch(local), m.handleChildModelUpdate(msg))
+			return m, tea.Sequence(m.grantSpaceFocusSwitch(local), m.handleChildModelUpdate(msg))
 
 		}
 
-	case extendSpaceMsg:
-		m.extendedSpace = msg.space
-		if msg.space == home {
+	case extendChildMsg:
+		m.activeChild = msg.child
+		if msg.child == home {
 			m.disableKeymap = true
 		}
 		if msg.focus {
@@ -66,25 +78,29 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 }
 
 func (m extensionSpaceModel) View() string {
-	style := infoContainerStyle.
+	style := largeContainerStyle.
 		Width(largeContainerW()).
 		Height(termH - (mainContainerStyle.GetVerticalFrameSize()))
-	switch m.extendedSpace {
+	switch m.activeChild {
 	case home:
 		title := m.titleStyle.Render("Home Space")
-		b := banner.Height(infoContainerWorkableH() - lipgloss.Height(title)).Render()
-		return style.Render(lipgloss.JoinVertical(lipgloss.Center, title, b))
-	case local:
-		return style.Render(m.localExtension.View())
+		b := banner.Height(extContainerWorkableH() - lipgloss.Height(title)).Render()
+		bt := lipgloss.JoinVertical(lipgloss.Center, title, b)
+		return style.Render(lipgloss.PlaceHorizontal(largeContainerW(), lipgloss.Center, bt))
+	case extDirNav:
+		return style.Render(m.extDirNav.View())
+	case preference:
+		return style.Render(m.preference.View())
 	default:
 		return ""
 	}
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-	m.localExtension, cmd = m.localExtension.Update(msg)
-	return cmd
+	var cmds [2]tea.Cmd
+	m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
+	m.preference, cmds[1] = m.preference.Update(msg)
+	return tea.Batch(cmds[:]...)
 }
 
 func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
@@ -101,5 +117,14 @@ func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
 
 func (m *extensionSpaceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
-	m.localExtension.updateKeymap(disable || m.extendedSpace == home)
+	m.extDirNav.updateKeymap(disable || m.activeChild == home)
+	//m.preference.updateKeymap(disable || m.extendedSpace == home)
+}
+
+func (m extensionSpaceModel) grantExtensionSwitch(child extChild) tea.Cmd {
+	return m.extDirNav.grantExtensionSwitch(child)
+}
+
+func (m extensionSpaceModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
+	return m.extDirNav.grantSpaceFocusSwitch(space)
 }

@@ -15,27 +15,35 @@ type fsErrMsg string
 
 func (msg fsErrMsg) cmd() tea.Msg { return msg }
 
-// extendDirMsg is sent by the dirNavModel to signal extendDirModel
+// extendDirMsg is sent by the dirNavModel to signal extDirNavModel
 // to extend selected directory, and whether to make the table focused or not
 type extendDirMsg struct {
 	path string
-	// marker to decide whether to make the extendDirModel.infoTable table focused
+	// marker to decide whether to make the extDirNavModel.extDirTable table focused
 	focus bool
 }
 
 func (msg extendDirMsg) cmd() tea.Msg { return msg }
 
-// extendSpaceMsg is sent by extendDirModel to extensionSpaceModel to signal
+// extendChildMsg is sent by extDirNavModel to extensionSpaceModel to signal
 // the title change and whether to make it focused
-type extendSpaceMsg struct {
-	space focusedSpace
-	// marker to decide whether to make the extension space focused
+type extendChildMsg struct {
+	child extChild
+	// marker to decide whether to make the extension child focused
 	focus bool
 }
 
-func (msg extendSpaceMsg) cmd() tea.Msg { return msg }
+func (msg extendChildMsg) cmd() tea.Msg { return msg }
 
-// spaceFocusSwitchMsg manages space switching using tab & shift+tab
+// spaceFocusSwitchMsg manages child switching using tab & shift+tab
 type spaceFocusSwitchMsg struct{}
 
 func spaceFocusSwitchCmd() tea.Msg { return spaceFocusSwitchMsg{} }
+
+type processSelectionsMsg struct {
+	parentPath  string
+	filenames   []string
+	dirs, files int
+}
+
+func (msg processSelectionsMsg) cmd() tea.Msg { return msg }
