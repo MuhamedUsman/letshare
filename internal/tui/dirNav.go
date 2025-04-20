@@ -90,8 +90,8 @@ type dirNavModel struct {
 	dirList list.Model
 	// current directory path
 	curDirPath string
-	// used to implement double space key action,
-	// extend directory on double space with focus.
+	// used to implement double child key action,
+	// extend directory on double child with focus.
 	// if prevSelDir == dirList.SelectedItem()
 	// the key action is valid
 	prevSelDir string
@@ -146,7 +146,7 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 				return m, m.readDir(dirOut, out)
 			}
 
-		case " ": // space
+		case " ": // child
 			selDir := m.dirList.SelectedItem().FilterValue()
 			selPath := filepath.Join(m.curDirPath, selDir)
 			// double spaceBar action is valid
@@ -218,7 +218,7 @@ func (m dirNavModel) View() string {
 	subW += lipgloss.Width(tail)
 	m.dirList.Title = runewidth.Truncate(m.dirList.Title, m.dirList.Width()-subW, "...")
 	s := lipgloss.JoinVertical(lipgloss.Top, m.dirList.View(), ht.Render())
-	return smallContainerStyle.Render(s)
+	return smallContainerStyle.Width(smallContainerW()).Render(s)
 }
 
 func newDirList() list.Model {
@@ -228,7 +228,7 @@ func newDirList() list.Model {
 	l.DisableQuitKeybindings()
 	l.SetShowHelp(false)
 
-	b := []key.Binding{key.NewBinding(key.WithKeys("space")), key.NewBinding(key.WithKeys("backspace"))}
+	b := []key.Binding{key.NewBinding(key.WithKeys("child")), key.NewBinding(key.WithKeys("backspace"))}
 	l.AdditionalFullHelpKeys = func() []key.Binding { return b }
 	l.AdditionalShortHelpKeys = func() []key.Binding { return b }
 
@@ -326,8 +326,8 @@ func customDirListHelpTable(show bool) *table.Table {
 	} else {
 		rows = [][]string{
 			{"/", "filter"},
-			{"space", "extend dir"},
-			{"2x(space)", "extend dir focused"},
+			{"child", "extend dir"},
+			{"2x(child)", "extend dir focused"},
 			{"enter", "into dir"},
 			{"backspace", "out of dir"},
 			{"←||→", "shuffle pages"},
@@ -357,7 +357,7 @@ func (m *dirNavModel) updateDimensions() {
 	// if the pagination is visible afterward, it adds '1' height to the list till the next update is called
 	helpHeight := lipgloss.Height(customDirListHelpTable(m.showHelp).String())
 	h := termH - (mainContainerStyle.GetVerticalFrameSize() + smallContainerStyle.GetVerticalFrameSize() + helpHeight + 1)
-	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize() + 1) // +1 experimental
+	w := smallContainerW() - (smallContainerStyle.GetHorizontalFrameSize())
 	m.dirList.SetSize(w, h)
 	// the width of titleBar gets +1 when the title txt overflows so explicitly constraining it
 	w = w - m.dirList.Styles.TitleBar.GetHorizontalFrameSize()

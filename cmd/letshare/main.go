@@ -26,7 +26,7 @@ func main() {
 	_, err = tea.NewProgram(
 		tui.InitialMainModel(),
 		tea.WithAltScreen(),
-		tea.WithMouseAllMotion(),
+		tea.WithMouseCellMotion(),
 		tea.WithoutBracketedPaste(),
 		tea.WithReportFocus(),
 	).Run()

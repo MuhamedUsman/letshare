@@ -25,17 +25,30 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 
 var ( // Container width calculations
 
+	workableW = func() int {
+		w := termW - mainContainerStyle.GetHorizontalFrameSize()
+		return max(0, w)
+	}
+
+	workableH = func() int {
+		h := termH - mainContainerStyle.GetVerticalFrameSize()
+		return max(0, h)
+	}
+
 	smallContainerW = func() int {
-		return (termW * 25) / 100
+		w := (workableW() * 25) / 100
+		w = w - smallContainerStyle.GetHorizontalFrameSize()
+		return max(0, w)
 	}
 
 	largeContainerW = func() int {
-		return termW - (smallContainerW()*2 + mainContainerStyle.GetHorizontalFrameSize())
+		w := workableW() - smallContainerW()*2
+		w = w - largeContainerStyle.GetHorizontalFrameSize()
+		return max(0, w)
 	}
 
-	infoContainerWorkableH = func() int {
-		h := mainContainerStyle.GetVerticalFrameSize() + infoContainerStyle.GetVerticalFrameSize()
-		return termH - h
+	extContainerWorkableH = func() int {
+		return workableH() - largeContainerStyle.GetVerticalFrameSize()
 	}
 )
 
@@ -49,7 +62,7 @@ var ( // Common Styles
 			Padding(0, 1)
 
 	smallContainerStyle = lipgloss.NewStyle().
-				Margin(1, 1, 0, 1)
+				Padding(1, 1, 0, 1)
 )
 
 var ( // mainModel Styles
@@ -65,10 +78,9 @@ var ( // dirNavModel Styles
 
 var ( // extensionSpaceModel Styles
 
-	infoContainerStyle = lipgloss.NewStyle().
+	largeContainerStyle = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder(), false, true).
 				BorderForeground(subduedHighlightColor).
-				AlignHorizontal(lipgloss.Center).
 				Padding(1, 0)
 
 	banner = lipgloss.NewStyle().
@@ -89,7 +101,17 @@ var ( // extensionSpaceModel Styles
            ` + slogan.Render()
 )
 
-var ( // extendDirModel Styles
+var ( // extensionModel Styles
+
+	extStatusBarStyle = lipgloss.NewStyle().
+		Margin(1, 1, 0, 1).
+		Height(1).
+		Italic(true).
+		Foreground(highlightColor).
+		Faint(true)
+)
+
+var ( // extDirNavModel Styles
 
 	customTableStyles = table.Styles{
 		Header: table.DefaultStyles().Header.
@@ -106,19 +128,46 @@ var ( // extendDirModel Styles
 		Cell: table.DefaultStyles().Cell.Foreground(midHighlightColor),
 	}
 
-	infoTableStatusBarStyle = lipgloss.NewStyle().
-				Margin(1, 1, 0, 1).
+	extDirNavTableFilterContainerStyle = lipgloss.NewStyle().
+						Align(lipgloss.Center)
+)
+
+var ( // remoteSpaceModel Styles
+
+)
+
+var ( // prepSelModel Styles
+
+	prepSelStatusBarStyle = lipgloss.NewStyle().
+				Margin(1, 2).
 				Height(1).
 				Italic(true).
 				Foreground(highlightColor).
 				Faint(true)
 
-	infoTableFilterContainerStyle = lipgloss.NewStyle().
-					Align(lipgloss.Center)
-)
+	prepQuesContainerStyle = lipgloss.NewStyle().
+				BorderForeground(highlightColor).
+				BorderStyle(lipgloss.ThickBorder()).
+				BorderLeft(true).
+				MarginBottom(1).
+				PaddingLeft(1)
 
-var ( // remoteSpaceModel Styles
+	prepQuesTitleStyle = lipgloss.NewStyle().
+				Background(subduedHighlightColor).
+				Foreground(highlightColor).
+				Italic(true).
+				MarginBottom(1).
+				Padding(0, 1)
 
+	prepQuesBodyStyle = lipgloss.NewStyle().
+				Foreground(midHighlightColor).
+				Italic(true)
+
+	prepQuesBtnStyle = lipgloss.NewStyle().
+				Background(subduedGrayColor).
+				Foreground(fgColor).
+				Padding(0, 1).
+				MarginRight(1)
 )
 
 var ( // confirmDialogModel Styles

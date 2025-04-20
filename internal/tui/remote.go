@@ -50,7 +50,7 @@ func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
 func (m remoteSpaceModel) View() string {
 	s := m.titleStyle.Render("Remote Space")
 	s = runewidth.Truncate(s, runewidth.StringWidth(s), "…")
-	return smallContainerStyle.Render(s)
+	return smallContainerStyle.Width(smallContainerW()).Render(s)
 }
 
 func (m *remoteSpaceModel) updateDimensions() {

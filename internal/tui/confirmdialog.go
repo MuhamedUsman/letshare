@@ -36,7 +36,7 @@ type confirmDialogModel struct {
 	// header and body of the dialog box
 	header, body string
 	cursor       confirmationCursor
-	// prevFocus remembers the previous focused space
+	// prevFocus remembers the previous focused child
 	// and releases it accordingly
 	prevFocus focusedSpace
 	// render signals this model's view must be rendered
