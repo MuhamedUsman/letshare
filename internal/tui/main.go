@@ -6,12 +6,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type focusedSpace int
+type focusSpace int
 
 const (
-	// No focusedSpace
-	none focusedSpace = iota
-	local
+	// No focusSpace
+	local focusSpace = iota
 	extension
 	remote
 	confirmation
@@ -19,8 +18,26 @@ const (
 
 var (
 	termW, termH int
-	currentFocus focusedSpace
+	currentFocus focusSpace
 )
+
+// eventCapturer defines an interface for types that can determine if they capture a specific key event.
+type eventCapturer interface {
+	// CapturesKeyEvent returns true if the implementation captures the given key event.
+	// When true is returned, the application typically should consider the event "consumed",
+	// and must be passed to the child component.
+	//
+	// Example:
+	//  case tea.KeyMsg:
+	//		// some child will capture the key event, let them handle it
+	//		if m.capturesKeyEvent(msg) {
+	//			return m, m.handleChildModelUpdates(msg)
+	//		}
+	//
+	// and not pass it to other components, In case the msg should be passed to other components,
+	// it must be handled with care (not recommended, but possible).
+	capturesKeyEvent(msg tea.KeyMsg) bool
+}
 
 type MainModel struct {
 	localSpace     localSpaceModel
@@ -38,6 +55,21 @@ func InitialMainModel() MainModel {
 	}
 }
 
+func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	switch currentFocus {
+	case local:
+		return m.localSpace.capturesKeyEvent(msg)
+	case extension:
+		return m.extensionSpace.capturesKeyEvent(msg)
+	case remote:
+		return m.remoteSpace.capturesKeyEvent(msg)
+	case confirmation:
+		return m.confirmation.capturesKeyEvent(msg)
+	default:
+		return false
+	}
+}
+
 func (m MainModel) Init() tea.Cmd {
 	currentFocus = local
 	return tea.Batch(m.localSpace.Init(), m.extensionSpace.Init(), m.remoteSpace.Init(), m.confirmation.Init())
@@ -51,14 +83,8 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		termH = msg.Height
 
 	case tea.KeyMsg:
-		m.updateKeymapsByFocus()
-
-		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
-		}
-
-		// if the confirmation dialog is in focus, disable keys of this model
-		if currentFocus == confirmation {
+		// some child will capture the key event, let them handle it
+		if m.capturesKeyEvent(msg) {
 			return m, m.handleChildModelUpdates(msg)
 		}
 
@@ -79,8 +105,12 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, spaceFocusSwitchCmd
 
+		case "ctrl+c":
+			return m, tea.Quit
 		}
 
+	case spaceFocusSwitchMsg:
+		m.updateKeymapsByFocus()
 	}
 
 	return m, m.handleChildModelUpdates(msg)
@@ -98,6 +128,34 @@ func (m MainModel) View() string {
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, 4)
+
+	// For key messages that were captured, only update the capturing component
+	if keyMsg, isKeyMsg := msg.(tea.KeyMsg); isKeyMsg {
+		switch currentFocus {
+		case local:
+			if m.localSpace.capturesKeyEvent(keyMsg) {
+				m.localSpace, cmds[0] = m.localSpace.Update(msg)
+				return cmds[0] // Only return the command from the capturing component
+			}
+		case remote:
+			if m.remoteSpace.capturesKeyEvent(keyMsg) {
+				m.remoteSpace, cmds[1] = m.remoteSpace.Update(msg)
+				return cmds[1] // Only return the command from the capturing component
+			}
+		case extension:
+			if m.extensionSpace.capturesKeyEvent(keyMsg) {
+				m.extensionSpace, cmds[2] = m.extensionSpace.Update(msg)
+				return cmds[2] // Only return the command from the capturing component
+			}
+		case confirmation:
+			if m.confirmation.capturesKeyEvent(keyMsg) {
+				m.confirmation, cmds[3] = m.confirmation.Update(msg)
+				return cmds[3] // Only return the command from the capturing component
+			}
+		}
+	}
+
+	// For non-key messages or uncaptured key messages, update all components
 	m.localSpace, cmds[0] = m.localSpace.Update(msg)
 	m.remoteSpace, cmds[1] = m.remoteSpace.Update(msg)
 	m.extensionSpace, cmds[2] = m.extensionSpace.Update(msg)
@@ -110,4 +168,8 @@ func (m *MainModel) updateKeymapsByFocus() {
 	m.extensionSpace.updateKeymap(currentFocus != extension)
 	m.remoteSpace.disableKeymap = currentFocus != remote
 	m.confirmation.disableKeymap = currentFocus != confirmation
+}
+
+func (m MainModel) grantSpaceFocusSwitch() {
+
 }

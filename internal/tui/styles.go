@@ -138,32 +138,45 @@ var ( // remoteSpaceModel Styles
 
 var ( // prepSelModel Styles
 
-	prepSelStatusBarStyle = lipgloss.NewStyle().
-				Margin(1, 2).
-				Height(1).
-				Italic(true).
-				Foreground(highlightColor).
-				Faint(true)
+	preferenceStatusBarStyle = lipgloss.NewStyle().
+					Margin(1, 2).
+					Height(1).
+					Italic(true).
+					Foreground(highlightColor).
+					Faint(true)
 
-	prepQuesContainerStyle = lipgloss.NewStyle().
-				BorderForeground(highlightColor).
-				BorderStyle(lipgloss.ThickBorder()).
-				BorderLeft(true).
-				MarginBottom(1).
-				PaddingLeft(1)
+	preferenceSectionStyle = lipgloss.NewStyle().
+				BorderForeground(midHighlightColor).
+				BorderStyle(lipgloss.ASCIIBorder()).
+				Foreground(midHighlightColor).
+				Align(lipgloss.Center)
 
-	prepQuesTitleStyle = lipgloss.NewStyle().
+	/*preferenceSectionStyle = lipgloss.NewStyle().
+	Background(highlightColor).
+	Foreground(subduedHighlightColor).
+	Faint(true).
+	Underline(true).
+	Italic(true).
+	Padding(0, 1).
+	Margin(1, 1, 0, 1)*/
+
+	preferenceQueContainerStyle = lipgloss.NewStyle().
+					BorderForeground(subduedHighlightColor).
+					BorderStyle(lipgloss.RoundedBorder()).
+					Padding(1, 2)
+
+	preferenceQueTitleStyle = lipgloss.NewStyle().
 				Background(subduedHighlightColor).
 				Foreground(highlightColor).
 				Italic(true).
-				MarginBottom(1).
 				Padding(0, 1)
 
-	prepQuesBodyStyle = lipgloss.NewStyle().
+	preferenceQueDescStyle = lipgloss.NewStyle().
 				Foreground(midHighlightColor).
+				Padding(1, 0).
 				Italic(true)
 
-	prepQuesBtnStyle = lipgloss.NewStyle().
+	preferenceQueBtnStyle = lipgloss.NewStyle().
 				Background(subduedGrayColor).
 				Foreground(fgColor).
 				Padding(0, 1).

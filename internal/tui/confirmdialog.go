@@ -38,7 +38,7 @@ type confirmDialogModel struct {
 	cursor       confirmationCursor
 	// prevFocus remembers the previous focused child
 	// and releases it accordingly
-	prevFocus focusedSpace
+	prevFocus focusSpace
 	// render signals this model's view must be rendered
 	render        bool
 	disableKeymap bool
@@ -48,6 +48,15 @@ type confirmDialogModel struct {
 
 func initialConfirmDialogModel() confirmDialogModel {
 	return confirmDialogModel{cursor: 1}
+}
+
+func (m confirmDialogModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "enter", "tab", "shift+tab", "left", "right", "h", "l", "esc":
+		return m.render
+	default:
+		return false
+	}
 }
 
 func (m confirmDialogModel) Init() tea.Cmd {
@@ -85,7 +94,11 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 			m.cursor = 1
 
 		case "esc": // works same as pressing nope btn
-			return m, tea.Batch(m.nopeFunc(), m.hide())
+			var cmd tea.Cmd
+			if m.nopeFunc != nil {
+				cmd = m.nopeFunc()
+			}
+			return m, tea.Batch(cmd, m.hide())
 		}
 
 	case confirmDialogMsg:
