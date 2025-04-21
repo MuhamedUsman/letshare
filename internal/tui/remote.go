@@ -17,6 +17,10 @@ func initialRemoteSpaceModel() remoteSpaceModel {
 	}
 }
 
+func (m remoteSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	return false
+}
+
 func (m remoteSpaceModel) Init() tea.Cmd {
 	return nil
 }

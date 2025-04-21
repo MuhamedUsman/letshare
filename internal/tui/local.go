@@ -13,7 +13,6 @@ const (
 
 type localSpaceModel struct {
 	dirNavigation dirNavModel
-	prepSel       prepSelModel
 	activeChild   activeLocalChild
 	disableKeymap bool
 }
@@ -21,13 +20,16 @@ type localSpaceModel struct {
 func initialLocalSpaceModel() localSpaceModel {
 	return localSpaceModel{
 		dirNavigation: initialDirNavModel(),
-		prepSel:       initialPrepSelModel(),
 		//activeChild:   prepSel,
 	}
 }
 
+func (m localSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	return m.dirNavigation.capturesKeyEvent(msg)
+}
+
 func (m localSpaceModel) Init() tea.Cmd {
-	return tea.Batch(m.dirNavigation.Init(), m.prepSel.Init())
+	return tea.Batch(m.dirNavigation.Init())
 }
 
 func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
@@ -47,21 +49,27 @@ func (m localSpaceModel) View() string {
 	switch m.activeChild {
 	case dirNav:
 		return m.dirNavigation.View()
-	case prepSel:
-		return m.prepSel.View()
 	default:
 		return ""
 	}
 }
 
 func (m *localSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmds [2]tea.Cmd
+	var cmds [1]tea.Cmd
 	m.dirNavigation, cmds[0] = m.dirNavigation.Update(msg)
-	m.prepSel, cmds[1] = m.prepSel.Update(msg)
 	return tea.Batch(cmds[:]...)
 }
 
 func (m *localSpaceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 	m.dirNavigation.updateKeymap(disable)
+}
+
+func (m localSpaceModel) grantSpaceFocusSwitch() bool {
+	switch m.activeChild {
+	case dirNav:
+		return m.dirNavigation.grantSpaceFocusSwitch()
+	default:
+		return true
+	}
 }

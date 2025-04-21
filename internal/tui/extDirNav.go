@@ -92,6 +92,15 @@ func getTableCols(tableWidth int) []table.Column {
 	}
 }
 
+func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "esc":
+		return true
+	default:
+		return false
+	}
+}
+
 func (m extDirNavModel) Init() tea.Cmd {
 	return nil
 }
@@ -503,12 +512,8 @@ func (m *extDirNavModel) grantExtensionSwitch(space extChild) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
 }
 
-func (m extDirNavModel) grantSpaceFocusSwitch(space focusedSpace) tea.Cmd {
-	if m.filterState != unfiltered {
-		return nil
-	}
-	currentFocus = space
-	return spaceFocusSwitchCmd
+func (m extDirNavModel) grantSpaceFocusSwitch() bool {
+	return m.filterState == unfiltered
 }
 
 func (m *extDirNavModel) updateKeymap(disable bool) {

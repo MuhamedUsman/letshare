@@ -2,13 +2,14 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/mattn/go-runewidth"
-	"os"
 	"strconv"
+	"strings"
 )
 
 type preferenceType int
@@ -38,25 +39,26 @@ func (ps preferenceSection) string() string {
 }
 
 type preferenceQue struct {
-	title, desc string
-	pType       preferenceType
-	pSec        preferenceSection
+	title, desc   string
+	pType         preferenceType
+	pSec          preferenceSection
+	check         bool
+	prompt, input string
 }
 
 type preferenceModel struct {
-	preferenceQues          []preferenceQue
-	vp                      viewport.Model
-	titleStyle              lipgloss.Style
-	showHelp, disableKeymap bool
+	vp                               viewport.Model
+	txtInput                         textinput.Model
+	preferenceQues                   []preferenceQue
+	titleStyle                       lipgloss.Style
+	cursor                           int
+	unsaved, showHelp, disableKeymap bool
+	// to set whether the model is viewed or not
+	// set by the parent of preferenceModel
+	active bool
 }
 
 func initialPreferenceModel() preferenceModel {
-	// Load some text for our viewport
-	content, err := os.ReadFile("internal/tui/artichoke.md")
-	if err != nil {
-		fmt.Println("could not load file:", err)
-		os.Exit(1)
-	}
 	preferenceQues := []preferenceQue{
 		{
 			title: "ZIP FILES?",
@@ -70,13 +72,36 @@ func initialPreferenceModel() preferenceModel {
 			pType: option,
 			pSec:  sharing,
 		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
 	}
 	vp := viewport.New(0, 0)
-	vp.SetContent(string(content))
-	vp.Style = vp.Style.Padding(1, 2, 0, 2)
+	vp.Style = vp.Style.PaddingTop(1)
 	return preferenceModel{
 		preferenceQues: preferenceQues,
 		vp:             vp,
+	}
+}
+
+func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	captures := !m.disableKeymap && m.active
+	switch msg.String() {
+	case "tab", "shift+tab":
+		return captures
+	default:
+		return false
 	}
 }
 
@@ -93,18 +118,40 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		}
 		switch msg.String() {
 
+		case "tab":
+			m.cursor = (m.cursor + 1) % len(m.preferenceQues)
+			m.renderViewport()
+
+		case "shift+tab":
+			m.cursor = (m.cursor - 1 + len(m.preferenceQues)) % len(m.preferenceQues)
+			m.renderViewport()
+
+		case "esc":
+			m.cursor = 0
+			m.active = false
+
 		case "?":
 			m.showHelp = !m.showHelp
 			m.updateViewPortDimensions()
 
 		}
+
+	case tea.MouseMsg:
+		if m.disableKeymap {
+			return m, nil
+		}
+
 	case tea.WindowSizeMsg:
 		m.updateViewPortDimensions()
 
 	case spaceFocusSwitchMsg:
 		m.updateTitleStyleAsFocus(currentFocus == extension)
 
+	case extendChildMsg:
+		m.active = msg.child == preference
 	}
+
+	m.renderViewport()
 	return m, m.handleViewportUpdate(msg)
 }
 
@@ -163,8 +210,134 @@ func (m preferenceModel) renderStatusBar() string {
 	return extStatusBarStyle.Render(s)
 }
 
+func (m *preferenceModel) renderViewport() {
+	sb := new(strings.Builder)
+	prevSec := preferenceSection(-1)
+	for i, q := range m.preferenceQues {
+		if q.pSec != prevSec {
+			prevSec = q.pSec
+			sb.WriteString(m.renderSectionTitle(q.pSec.string()))
+			sb.WriteString("\n")
+		}
+		if i == m.cursor {
+			sb.WriteString(m.renderActiveQue(q))
+		} else {
+			sb.WriteString(m.renderInactiveQue(q))
+		}
+		sb.WriteString("\n")
+	}
+	m.vp.SetContent(sb.String())
+}
+
+func (m preferenceModel) renderSectionTitle(t string) string {
+	return preferenceSectionStyle.
+		Width(m.vp.Width - preferenceSectionStyle.GetHorizontalBorderSize()).
+		Render(t)
+}
+
+func (m preferenceModel) renderInactiveQue(q preferenceQue) string {
+	title := truncateRenderedTitle(q.title)
+	title = preferenceQueTitleStyle.Render(title)
+	descS := preferenceQueDescStyle
+	var answerField string
+	if q.pType == option {
+		answerField = renderInactiveBtn(q.check)
+	}
+	if q.pType == input {
+		answerField = renderInactiveInputField(q.prompt, q.input)
+	}
+	ques := lipgloss.JoinVertical(lipgloss.Left, title, descS.Render(q.desc), answerField)
+	return preferenceQueContainerStyle.
+		Width(m.vp.Width - preferenceQueContainerStyle.GetHorizontalBorderSize()).
+		Render(ques)
+}
+
+func (m preferenceModel) renderActiveQue(q preferenceQue) string {
+	title := truncateRenderedTitle(q.title)
+	title = preferenceQueTitleStyle.
+		Background(highlightColor).
+		Foreground(subduedHighlightColor).
+		Faint(true).
+		Render(title)
+	desc := preferenceQueDescStyle.
+		Foreground(highlightColor).
+		Render(q.desc)
+	var answerField string
+	if q.pType == option {
+		answerField = renderActiveBtns(q.check)
+	}
+	if q.pType == input {
+		answerField = renderInactiveInputField(q.prompt, q.input)
+	}
+	ques := lipgloss.JoinVertical(lipgloss.Left, title, desc, answerField)
+	return preferenceQueContainerStyle.
+		BorderForeground(highlightColor).
+		Width(m.vp.Width - preferenceQueContainerStyle.GetHorizontalBorderSize()).
+		Render(ques)
+}
+
+func renderInactiveInputField(prompt, placeholder string) string {
+	return fmt.Sprintf("%s: %s", prompt, placeholder)
+}
+
+func renderInactiveBtn(check bool) string {
+	s := "NOPE"
+	if check {
+		s = "YUP!"
+	}
+	return preferenceQueBtnStyle.
+		Background(highlightColor).
+		Foreground(subduedHighlightColor).
+		Faint(true).
+		Render(s)
+}
+
+func renderActiveBtns(check bool) string {
+	btn1 := preferenceQueBtnStyle  // nope
+	btn2 := preferenceQueBtnStyle. // yup!
+					Background(highlightColor).
+					Foreground(subduedHighlightColor).
+					Faint(true)
+	if !check { // btn1(nope) should be active
+		btn1, btn2 = btn2, btn1
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Left, btn1.Render("NOPE"), btn2.Render("YUP!"))
+}
+
 func (m *preferenceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
+}
+
+func (m preferenceModel) grantSpaceFocusSwitch() bool {
+	return !m.active
+}
+
+func (m *preferenceModel) grantExtensionSwitch(child extChild) tea.Cmd {
+	cmd := extendChildMsg{child, true}.cmd
+	if !m.unsaved {
+		return cmd
+	}
+	selBtn := yup
+	header := "ARE YOU SURE?"
+	body := "Unsaved preferences will be lost."
+	yupFunc := func() tea.Cmd {
+		m.resetToSavedState()
+		return cmd
+	}
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+
+}
+
+func (m *preferenceModel) resetToSavedState() {
+
+}
+
+func truncateRenderedTitle(title string) string {
+	subW := largeContainerStyle.GetHorizontalFrameSize() +
+		preferenceQueContainerStyle.GetHorizontalFrameSize() +
+		preferenceQueTitleStyle.GetHorizontalFrameSize()
+	titleW := largeContainerW() - subW
+	return runewidth.Truncate(title, titleW, "…")
 }
 
 func customPreferenceHelp(show bool) *lipTable.Table {

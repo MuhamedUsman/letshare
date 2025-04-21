@@ -113,6 +113,10 @@ func initialDirNavModel() dirNavModel {
 	}
 }
 
+func (m dirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	return false
+}
+
 func (m dirNavModel) Init() tea.Cmd {
 	return m.readDir(m.curDirPath, noop)
 }
@@ -464,4 +468,8 @@ func (m *dirNavModel) updateKeymap(disable bool) {
 		m.dirList.DisableQuitKeybindings()
 	}
 	m.disableKeymap = disable
+}
+
+func (m dirNavModel) grantSpaceFocusSwitch() bool {
+	return true
 }
