@@ -35,6 +35,10 @@ func (m localSpaceModel) Init() tea.Cmd {
 func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.capturesKeyEvent(msg) {
+			// some child will capture the key event, let them handle it
+			return m, m.handleChildModelUpdate(msg)
+		}
 		switch msg.String() {
 		case "ctrl+s":
 			m.activeChild = prepSel

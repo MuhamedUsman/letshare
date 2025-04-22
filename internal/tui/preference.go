@@ -46,16 +46,19 @@ type preferenceQue struct {
 	prompt, input string
 }
 
+type preferenceInactiveMsg struct{}
+
+// to signal extensionSpaceModel to switch back to the previous child model
+// as the user is done with the preference model.
+func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
+
 type preferenceModel struct {
-	vp                               viewport.Model
-	txtInput                         textinput.Model
-	preferenceQues                   []preferenceQue
-	titleStyle                       lipgloss.Style
-	cursor                           int
-	unsaved, showHelp, disableKeymap bool
-	// to set whether the model is viewed or not
-	// set by the parent of preferenceModel
-	active bool
+	vp                                       viewport.Model
+	txtInput                                 textinput.Model
+	preferenceQues                           []preferenceQue
+	titleStyle                               lipgloss.Style
+	cursor                                   int
+	unsaved, active, showHelp, disableKeymap bool
 }
 
 func initialPreferenceModel() preferenceModel {
@@ -96,10 +99,9 @@ func initialPreferenceModel() preferenceModel {
 }
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	captures := !m.disableKeymap && m.active
 	switch msg.String() {
-	case "tab", "shift+tab":
-		return captures
+	case "tab", "enter", "shift+tab", "left", "right", "esc", "?":
+		return !m.disableKeymap && m.active
 	default:
 		return false
 	}
@@ -113,12 +115,12 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
-		if m.disableKeymap {
+		if m.disableKeymap || !m.active {
 			return m, nil
 		}
 		switch msg.String() {
 
-		case "tab":
+		case "tab", "enter":
 			m.cursor = (m.cursor + 1) % len(m.preferenceQues)
 			m.renderViewport()
 
@@ -126,9 +128,19 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			m.cursor = (m.cursor - 1 + len(m.preferenceQues)) % len(m.preferenceQues)
 			m.renderViewport()
 
+		case "left":
+			m.preferenceQues[m.cursor].check = false
+			m.renderViewport()
+
+		case "right":
+			m.preferenceQues[m.cursor].check = true
+			m.renderViewport()
+
 		case "esc":
-			m.cursor = 0
-			m.active = false
+			if m.unsaved {
+				return m, m.confirmDiscardChanges()
+			}
+			return m, m.inactivePreference()
 
 		case "?":
 			m.showHelp = !m.showHelp
@@ -149,6 +161,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 	case extendChildMsg:
 		m.active = msg.child == preference
+
 	}
 
 	m.renderViewport()
@@ -308,24 +321,22 @@ func (m *preferenceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 }
 
-func (m preferenceModel) grantSpaceFocusSwitch() bool {
-	return !m.active
+func (m *preferenceModel) inactivePreference() tea.Cmd {
+	m.cursor = 0
+	m.active = false
+	return preferenceInactiveCmd
 }
 
-func (m *preferenceModel) grantExtensionSwitch(child extChild) tea.Cmd {
-	cmd := extendChildMsg{child, true}.cmd
-	if !m.unsaved {
-		return cmd
-	}
+// grant the discard request and envelops "esc" as a command for yupFunc
+func (m *preferenceModel) confirmDiscardChanges() tea.Cmd {
 	selBtn := yup
-	header := "ARE YOU SURE?"
+	header := "DISCARD CHANGES?"
 	body := "Unsaved preferences will be lost."
 	yupFunc := func() tea.Cmd {
 		m.resetToSavedState()
-		return cmd
+		return m.inactivePreference()
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
-
 }
 
 func (m *preferenceModel) resetToSavedState() {
