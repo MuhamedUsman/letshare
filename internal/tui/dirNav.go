@@ -114,7 +114,16 @@ func initialDirNavModel() dirNavModel {
 }
 
 func (m dirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	return false
+	switch msg.String() {
+	case "enter":
+		return m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil
+	case "backspace":
+		return m.dirList.FilterState() == list.Unfiltered
+	case " ", "?":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m dirNavModel) Init() tea.Cmd {

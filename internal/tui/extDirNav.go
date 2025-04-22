@@ -94,8 +94,14 @@ func getTableCols(tableWidth int) []table.Column {
 
 func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
-	case "esc":
+	case "enter":
+		return m.filterState == filtering || (m.isValidTableShortcut() && m.filterState != filtering)
+	case "up", "down", "?", "ctrl+a", "ctrl+z", "ctrl+s":
 		return true
+	case "/", "shift+up", "ctrl+up", "shift+down", "ctrl+down":
+		return m.isValidTableShortcut()
+	case "esc":
+		return m.filterState != unfiltered || m.getSelectionCount() > 0
 	default:
 		return false
 	}
@@ -159,10 +165,6 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		case "ctrl+z":
 			m.selectAll(false)
 
-		case "ctrl+s":
-			prepMsg := m.assemblePrepSelMsg()
-			return m, prepMsg.cmd
-
 		case "/":
 			if m.isValidTableShortcut() {
 				m.filterState = filtering
@@ -177,6 +179,9 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 			}
 
 		case "esc":
+			if m.getSelectionCount() > 0 {
+				return m, m.confirmDiacardSelection(home)
+			}
 			if m.filterState != unfiltered {
 				m.resetFilter()
 				m.extDirTable.Focus()
@@ -493,7 +498,7 @@ func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
 }
 
-func (m *extDirNavModel) grantExtensionSwitch(space extChild) tea.Cmd {
+func (m *extDirNavModel) confirmDiacardSelection(space extChild) tea.Cmd {
 	// when filtering, we will not grant an extension switch
 	if m.filterState != unfiltered {
 		return nil
@@ -518,28 +523,6 @@ func (m extDirNavModel) grantSpaceFocusSwitch() bool {
 
 func (m *extDirNavModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
-}
-
-func (m extDirNavModel) assemblePrepSelMsg() processSelectionsMsg {
-	filenames := make([]string, 0, len(m.dirContents.contents))
-	dirs, files := 0, 0
-	for _, content := range m.dirContents.contents {
-		if content.selection {
-			filenames = append(filenames, content.name)
-			if content.ext == "dir" {
-				dirs++
-			} else {
-				files++
-			}
-		}
-	}
-	prepMsg := processSelectionsMsg{
-		parentPath: m.dirPath,
-		filenames:  filenames,
-		dirs:       dirs,
-		files:      files,
-	}
-	return prepMsg
 }
 
 func customExtDirTableHelp(show bool) *lipTable.Table {

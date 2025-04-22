@@ -128,37 +128,9 @@ func (m MainModel) View() string {
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, 4)
-
-	// For key messages that were captured, only update the capturing component
-	if keyMsg, isKeyMsg := msg.(tea.KeyMsg); isKeyMsg {
-		switch currentFocus {
-		case local:
-			if m.localSpace.capturesKeyEvent(keyMsg) {
-				m.localSpace, cmds[0] = m.localSpace.Update(msg)
-				return cmds[0] // Only return the command from the capturing component
-			}
-		case remote:
-			if m.remoteSpace.capturesKeyEvent(keyMsg) {
-				m.remoteSpace, cmds[1] = m.remoteSpace.Update(msg)
-				return cmds[1] // Only return the command from the capturing component
-			}
-		case extension:
-			if m.extensionSpace.capturesKeyEvent(keyMsg) {
-				m.extensionSpace, cmds[2] = m.extensionSpace.Update(msg)
-				return cmds[2] // Only return the command from the capturing component
-			}
-		case confirmation:
-			if m.confirmation.capturesKeyEvent(keyMsg) {
-				m.confirmation, cmds[3] = m.confirmation.Update(msg)
-				return cmds[3] // Only return the command from the capturing component
-			}
-		}
-	}
-
-	// For non-key messages or uncaptured key messages, update all components
 	m.localSpace, cmds[0] = m.localSpace.Update(msg)
-	m.remoteSpace, cmds[1] = m.remoteSpace.Update(msg)
-	m.extensionSpace, cmds[2] = m.extensionSpace.Update(msg)
+	m.extensionSpace, cmds[1] = m.extensionSpace.Update(msg)
+	m.remoteSpace, cmds[2] = m.remoteSpace.Update(msg)
 	m.confirmation, cmds[3] = m.confirmation.Update(msg)
 	return tea.Batch(cmds...)
 }
@@ -168,8 +140,4 @@ func (m *MainModel) updateKeymapsByFocus() {
 	m.extensionSpace.updateKeymap(currentFocus != extension)
 	m.remoteSpace.disableKeymap = currentFocus != remote
 	m.confirmation.disableKeymap = currentFocus != confirmation
-}
-
-func (m MainModel) grantSpaceFocusSwitch() {
-
 }
