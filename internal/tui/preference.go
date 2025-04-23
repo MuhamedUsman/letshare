@@ -39,11 +39,12 @@ func (ps preferenceSection) string() string {
 }
 
 type preferenceQue struct {
-	title, desc   string
-	pType         preferenceType
-	pSec          preferenceSection
-	check         bool
-	prompt, input string
+	title, desc              string
+	pType                    preferenceType
+	pSec                     preferenceSection
+	prompt, input            string
+	startsAtLine, endsAtLine int
+	check                    bool
 }
 
 type preferenceInactiveMsg struct{}
@@ -53,12 +54,12 @@ type preferenceInactiveMsg struct{}
 func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
 
 type preferenceModel struct {
-	vp                                       viewport.Model
-	txtInput                                 textinput.Model
-	preferenceQues                           []preferenceQue
-	titleStyle                               lipgloss.Style
-	cursor                                   int
-	unsaved, active, showHelp, disableKeymap bool
+	vp                                        viewport.Model
+	txtInput                                  textinput.Model
+	preferenceQues                            []preferenceQue
+	titleStyle                                lipgloss.Style
+	cursor, visibleFirstLine, visibleLastLine int
+	unsaved, active, showHelp, disableKeymap  bool
 }
 
 func initialPreferenceModel() preferenceModel {
@@ -89,9 +90,81 @@ func initialPreferenceModel() preferenceModel {
 			pType:  input,
 			pSec:   receiving,
 		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "SHARED ZIP NAME?",
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name",
+			pType:  input,
+			pSec:   receiving,
+		},
+		{
+			title:  "DOWNLOAD FOLDER?",
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path",
+			pType:  input,
+			pSec:   receiving,
+		},
 	}
 	vp := viewport.New(0, 0)
 	vp.Style = vp.Style.PaddingTop(1)
+	vp.MouseWheelEnabled = false
+	vp.KeyMap = viewport.KeyMap{} // disable default keymap
 	return preferenceModel{
 		preferenceQues: preferenceQues,
 		vp:             vp,
@@ -100,7 +173,7 @@ func initialPreferenceModel() preferenceModel {
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
-	case "tab", "enter", "shift+tab", "left", "right", "esc", "?":
+	case "tab", "down", "enter", "shift+tab", "up", "left", "right", "esc", "?":
 		return !m.disableKeymap && m.active
 	default:
 		return false
@@ -114,6 +187,13 @@ func (m preferenceModel) Init() tea.Cmd {
 func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
+	case tea.WindowSizeMsg:
+		m.updateViewPortDimensions()
+		m.renderViewport()
+		if m.visibleLastLine == 0 {
+			m.visibleLastLine = m.vp.VisibleLineCount()
+		}
+
 	case tea.KeyMsg:
 		if m.disableKeymap || !m.active {
 			return m, nil
@@ -122,10 +202,26 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 		case "tab", "enter":
 			m.cursor = (m.cursor + 1) % len(m.preferenceQues)
+			m.handleViewportScroll(down)
+			m.renderViewport()
+
+		case "down":
+			if m.cursor < len(m.preferenceQues)-1 {
+				m.cursor++
+			}
+			m.handleViewportScroll(down)
 			m.renderViewport()
 
 		case "shift+tab":
 			m.cursor = (m.cursor - 1 + len(m.preferenceQues)) % len(m.preferenceQues)
+			m.handleViewportScroll(up)
+			m.renderViewport()
+
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			m.handleViewportScroll(up)
 			m.renderViewport()
 
 		case "left":
@@ -148,14 +244,6 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 		}
 
-	case tea.MouseMsg:
-		if m.disableKeymap {
-			return m, nil
-		}
-
-	case tea.WindowSizeMsg:
-		m.updateViewPortDimensions()
-
 	case spaceFocusSwitchMsg:
 		m.updateTitleStyleAsFocus(currentFocus == extension)
 
@@ -164,7 +252,6 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 	}
 
-	m.renderViewport()
 	return m, m.handleViewportUpdate(msg)
 }
 
@@ -183,17 +270,52 @@ func (m *preferenceModel) handleViewportUpdate(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+type scrollDirection = int
+
+const (
+	up scrollDirection = iota
+	down
+)
+
+func (m *preferenceModel) handleViewportScroll(direction scrollDirection) {
+	if m.cursor == 0 {
+		m.vp.GotoTop()
+		return
+	}
+	if m.cursor == len(m.preferenceQues)-1 {
+		m.vp.GotoBottom()
+		return
+	}
+	switch direction {
+	case up:
+		visibleTopLine := m.vp.YOffset
+		queStartingLine := m.preferenceQues[m.cursor].startsAtLine
+		// question starting line is before the visible top line
+		if queStartingLine < visibleTopLine {
+			m.vp.SetYOffset(queStartingLine)
+		}
+	case down:
+		visibleBottomLine := m.vp.YOffset + m.vp.VisibleLineCount()
+		queEndingLine := m.preferenceQues[m.cursor].endsAtLine
+		// question ending line is after the visible bottom line
+		if queEndingLine > visibleBottomLine {
+			m.vp.SetYOffset(queEndingLine - m.vp.VisibleLineCount())
+		}
+	}
+}
+
 func (m *preferenceModel) updateViewPortDimensions() {
-	titleH := m.titleStyle.GetHeight() + m.titleStyle.GetVerticalFrameSize()
 	statusBarH := extStatusBarStyle.GetHeight() + extStatusBarStyle.GetVerticalFrameSize()
 	helpH := lipgloss.Height(customPreferenceHelp(m.showHelp).String())
 	viewportFrameH := m.vp.Style.GetVerticalFrameSize()
-	h := extContainerWorkableH() - (titleH + statusBarH + helpH + viewportFrameH)
+	h := extContainerWorkableH() - (statusBarH + helpH + viewportFrameH)
 	w := largeContainerW() - largeContainerStyle.GetHorizontalFrameSize()
 	m.vp.Width, m.vp.Height = w, h
-	if m.vp.PastBottom() {
-		m.vp.GotoBottom()
-	}
+	// set the cursor to 0
+	m.cursor = 0
+	m.visibleFirstLine = 0
+	m.visibleLastLine = 0
+	m.vp.GotoTop()
 }
 
 func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
@@ -210,22 +332,10 @@ func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
 	}
 }
 
-func (m preferenceModel) renderTitle(title string) string {
-	tail := "…"
-	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + lipgloss.Width(tail))
-	title = runewidth.Truncate(title, w, tail)
-	return m.titleStyle.Render(title)
-}
-
-func (m preferenceModel) renderStatusBar() string {
-	scrolled := m.vp.ScrollPercent() * 100
-	s := fmt.Sprintf("Scrolled: %06.2f%%", scrolled)
-	return extStatusBarStyle.Render(s)
-}
-
 func (m *preferenceModel) renderViewport() {
 	sb := new(strings.Builder)
 	prevSec := preferenceSection(-1)
+	var startsAtLine, endsAtLine int
 	for i, q := range m.preferenceQues {
 		if q.pSec != prevSec {
 			prevSec = q.pSec
@@ -238,8 +348,25 @@ func (m *preferenceModel) renderViewport() {
 			sb.WriteString(m.renderInactiveQue(q))
 		}
 		sb.WriteString("\n")
+		endsAtLine = lipgloss.Height(sb.String())
+		m.preferenceQues[i].startsAtLine = startsAtLine - preferenceQueContainerStyle.GetBorderTopSize()
+		m.preferenceQues[i].endsAtLine = endsAtLine - preferenceQueContainerStyle.GetBorderBottomSize()
+		startsAtLine = endsAtLine
 	}
 	m.vp.SetContent(sb.String())
+}
+
+func (m preferenceModel) renderTitle(title string) string {
+	tail := "…"
+	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + lipgloss.Width(tail))
+	title = runewidth.Truncate(title, w, tail)
+	return m.titleStyle.Render(title)
+}
+
+func (m preferenceModel) renderStatusBar() string {
+	scrolled := m.vp.ScrollPercent() * 100
+	s := fmt.Sprintf("Scrolled: %06.2f%%", scrolled)
+	return extStatusBarStyle.Render(s)
 }
 
 func (m preferenceModel) renderSectionTitle(t string) string {
@@ -323,6 +450,7 @@ func (m *preferenceModel) updateKeymap(disable bool) {
 
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
+	m.visibleFirstLine, m.visibleLastLine = 0, 0
 	m.active = false
 	return preferenceInactiveCmd
 }
@@ -341,6 +469,14 @@ func (m *preferenceModel) confirmDiscardChanges() tea.Cmd {
 
 func (m *preferenceModel) resetToSavedState() {
 
+}
+
+func (m preferenceModel) getLastVisibleLine() int {
+	return int(m.vp.ScrollPercent()*float64(m.vp.TotalLineCount())) + (m.vp.VisibleLineCount())
+}
+
+func (m preferenceModel) getFirstVisibleLine() int {
+	return int(m.vp.ScrollPercent() * float64(m.vp.TotalLineCount()))
 }
 
 func truncateRenderedTitle(title string) string {

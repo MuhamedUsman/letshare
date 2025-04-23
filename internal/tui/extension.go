@@ -64,16 +64,14 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		switch msg.String() {
 
 		case "esc":
-			if m.activeChild == m.prevActiveChild {
-				return m, extendChildMsg{child: home, focus: true}.cmd
+			if m.activeChild == preference && m.prevActiveChild != preference {
+				return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
 			}
-			return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
+			return m, extendChildMsg{child: home, focus: true}.cmd
 
 		case "backspace":
 			//return m, tea.Sequence(m.grantSpaceFocusSwitch(local), m.handleChildModelUpdate(msg))
 
-		case "ctrl+p":
-			return m, extendChildMsg{child: preference, focus: true}.cmd
 		}
 
 	case extendChildMsg:
@@ -84,11 +82,11 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 		if msg.focus {
 			currentFocus = extension
-			return m, spaceFocusSwitchCmd
+			return m, tea.Batch(spaceFocusSwitchCmd, m.handleChildModelUpdate(msg))
 		}
 
-	/*case preferenceInactiveMsg:
-	return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd*/
+	case preferenceInactiveMsg:
+		return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
@@ -122,10 +120,20 @@ func (m extensionSpaceModel) View() string {
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmds [2]tea.Cmd
-	m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
-	m.preference, cmds[1] = m.preference.Update(msg)
-	return tea.Batch(cmds[:]...)
+	var cmd tea.Cmd
+	switch m.activeChild {
+	case extDirNav:
+		m.extDirNav, cmd = m.extDirNav.Update(msg)
+		return cmd
+	case preference:
+		m.preference, cmd = m.preference.Update(msg)
+		return cmd
+	default:
+		var cmds [2]tea.Cmd
+		m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
+		m.preference, cmds[1] = m.preference.Update(msg)
+		return tea.Batch(cmds[:]...)
+	}
 }
 
 func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {

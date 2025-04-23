@@ -90,6 +90,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 
+		case "ctrl+p":
+			return m, extendChildMsg{child: preference, focus: true}.cmd
+
 		case "tab":
 			// loop currentFocus & extendSpace b/w local, extensionSpace and remote tabs
 			currentFocus++
