@@ -151,15 +151,6 @@ var ( // prepSelModel Styles
 				Foreground(midHighlightColor).
 				Align(lipgloss.Center)
 
-	/*preferenceSectionStyle = lipgloss.NewStyle().
-	Background(highlightColor).
-	Foreground(subduedHighlightColor).
-	Faint(true).
-	Underline(true).
-	Italic(true).
-	Padding(0, 1).
-	Margin(1, 1, 0, 1)*/
-
 	preferenceQueContainerStyle = lipgloss.NewStyle().
 					BorderForeground(subduedHighlightColor).
 					BorderStyle(lipgloss.RoundedBorder()).
