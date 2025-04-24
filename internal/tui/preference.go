@@ -54,12 +54,12 @@ type preferenceInactiveMsg struct{}
 func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
 
 type preferenceModel struct {
-	vp                                        viewport.Model
-	txtInput                                  textinput.Model
-	preferenceQues                            []preferenceQue
-	titleStyle                                lipgloss.Style
-	cursor, visibleFirstLine, visibleLastLine int
-	unsaved, active, showHelp, disableKeymap  bool
+	vp                                       viewport.Model
+	txtInput                                 textinput.Model
+	preferenceQues                           []preferenceQue
+	titleStyle                               lipgloss.Style
+	cursor                                   int
+	unsaved, active, showHelp, disableKeymap bool
 }
 
 func initialPreferenceModel() preferenceModel {
@@ -90,81 +90,11 @@ func initialPreferenceModel() preferenceModel {
 			pType:  input,
 			pSec:   receiving,
 		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
-			pType:  input,
-			pSec:   receiving,
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
-			pType:  input,
-			pSec:   receiving,
-		},
 	}
 	vp := viewport.New(0, 0)
 	vp.Style = vp.Style.PaddingTop(1)
 	vp.MouseWheelEnabled = false
-	vp.KeyMap = viewport.KeyMap{} // disable default keymap
+	vp.KeyMap = viewport.KeyMap{} // disable keymap
 	return preferenceModel{
 		preferenceQues: preferenceQues,
 		vp:             vp,
@@ -190,9 +120,6 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.updateViewPortDimensions()
 		m.renderViewport()
-		if m.visibleLastLine == 0 {
-			m.visibleLastLine = m.vp.VisibleLineCount()
-		}
 
 	case tea.KeyMsg:
 		if m.disableKeymap || !m.active {
@@ -313,8 +240,6 @@ func (m *preferenceModel) updateViewPortDimensions() {
 	m.vp.Width, m.vp.Height = w, h
 	// set the cursor to 0
 	m.cursor = 0
-	m.visibleFirstLine = 0
-	m.visibleLastLine = 0
 	m.vp.GotoTop()
 }
 
@@ -450,7 +375,6 @@ func (m *preferenceModel) updateKeymap(disable bool) {
 
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
-	m.visibleFirstLine, m.visibleLastLine = 0, 0
 	m.active = false
 	return preferenceInactiveCmd
 }
