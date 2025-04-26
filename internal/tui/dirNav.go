@@ -343,7 +343,7 @@ func customDirListHelpTable(show bool) *table.Table {
 			{"2x(child)", "extend dir focused"},
 			{"enter", "into dir"},
 			{"backspace", "out of dir"},
-			{"←||→", "shuffle pages"},
+			{"←/→", "shuffle pages"},
 			{"esc", "exit filtering"},
 			{"?", "hide help"},
 		}

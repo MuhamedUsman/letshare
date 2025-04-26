@@ -122,9 +122,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainModel) View() string {
 	c := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
 	if m.confirmation.render {
-		w, h := mainContainerStyle.GetFrameSize()
-		w, h = termW-w, termH-h
-		c = overlay.Place(w, h, lipgloss.Center, lipgloss.Center, c, m.confirmation.View())
+		c = overlay.Place(lipgloss.Center, lipgloss.Center, c, m.confirmation.View())
 	}
 	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(c)
 }

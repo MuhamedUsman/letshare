@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,12 +55,15 @@ type preferenceInactiveMsg struct{}
 func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
 
 type preferenceModel struct {
-	vp                                       viewport.Model
-	txtInput                                 textinput.Model
-	preferenceQues                           []preferenceQue
-	titleStyle                               lipgloss.Style
-	cursor                                   int
-	unsaved, active, showHelp, disableKeymap bool
+	vp                      viewport.Model
+	txtInput                textinput.Model
+	preferenceQues          []preferenceQue
+	titleStyle              lipgloss.Style
+	cursor                  int
+	showHelp, disableKeymap bool
+	// modes
+	unsaved, active bool
+	insertMode      bool
 }
 
 func initialPreferenceModel() preferenceModel {
@@ -79,25 +83,38 @@ func initialPreferenceModel() preferenceModel {
 		{
 			title:  "SHARED ZIP NAME?",
 			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name",
+			prompt: "Name: ",
 			pType:  input,
 			pSec:   receiving,
+			input:  "Shared-by-Usman",
 		},
 		{
 			title:  "DOWNLOAD FOLDER?",
 			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path",
+			prompt: "Path: ",
 			pType:  input,
 			pSec:   receiving,
+			input:  "Absolute path to a folder where files will be downloaded.",
 		},
 	}
+
 	vp := viewport.New(0, 0)
 	vp.Style = vp.Style.PaddingTop(1)
 	vp.MouseWheelEnabled = false
 	vp.KeyMap = viewport.KeyMap{} // disable keymap
+
+	txtInput := textinput.New()
+	txtInput.Prompt = ""
+	txtInput.ShowSuggestions = true
+	txtInput.PromptStyle = txtInput.PromptStyle.Foreground(midHighlightColor)
+	txtInput.TextStyle = txtInput.TextStyle.Foreground(highlightColor)
+	txtInput.Cursor.Style = txtInput.Cursor.Style.Foreground(highlightColor)
+	txtInput.PlaceholderStyle = txtInput.PlaceholderStyle.Foreground(subduedHighlightColor)
+
 	return preferenceModel{
 		preferenceQues: preferenceQues,
 		vp:             vp,
+		txtInput:       txtInput,
 	}
 }
 
@@ -111,65 +128,83 @@ func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m preferenceModel) Init() tea.Cmd {
-	return m.vp.Init()
+	return tea.Batch(m.vp.Init(), textinput.Blink)
 }
 
 func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
-		m.updateViewPortDimensions()
+		m.updateDimensions()
 		m.renderViewport()
 
 	case tea.KeyMsg:
 		if m.disableKeymap || !m.active {
 			return m, nil
 		}
-		switch msg.String() {
 
+		if m.insertMode {
+			switch msg.String() {
+			case "enter":
+				m.preferenceQues[m.cursor].input = m.txtInput.Value()
+				m.resetInsertMode()
+				m.insertMode = false
+
+			case "esc":
+				m.insertMode = false
+				m.resetInsertMode()
+				return m, m.handleUpdate(msg)
+			}
+		}
+
+		// No other keymap, until input is escaped
+		if m.insertMode {
+			return m, m.handleUpdate(msg)
+		}
+
+		switch msg.String() {
 		case "tab", "enter":
 			m.cursor = (m.cursor + 1) % len(m.preferenceQues)
 			m.handleViewportScroll(down)
-			m.renderViewport()
 
 		case "down":
 			if m.cursor < len(m.preferenceQues)-1 {
 				m.cursor++
 			}
 			m.handleViewportScroll(down)
-			m.renderViewport()
 
 		case "shift+tab":
 			m.cursor = (m.cursor - 1 + len(m.preferenceQues)) % len(m.preferenceQues)
 			m.handleViewportScroll(up)
-			m.renderViewport()
 
 		case "up":
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			m.handleViewportScroll(up)
-			m.renderViewport()
 
 		case "left":
 			m.preferenceQues[m.cursor].check = false
-			m.renderViewport()
 
 		case "right":
 			m.preferenceQues[m.cursor].check = true
-			m.renderViewport()
+
+		case "i":
+			return m, m.activateInsertMode()
 
 		case "esc":
 			if m.unsaved {
 				return m, m.confirmDiscardChanges()
+			} else {
+				return m, m.inactivePreference()
 			}
-			return m, m.inactivePreference()
 
 		case "?":
 			m.showHelp = !m.showHelp
-			m.updateViewPortDimensions()
+			m.updateDimensions()
 
 		}
+		m.renderViewport()
 
 	case spaceFocusSwitchMsg:
 		m.updateTitleStyleAsFocus(currentFocus == extension)
@@ -179,7 +214,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 	}
 
-	return m, m.handleViewportUpdate(msg)
+	return m, tea.Batch(m.handleUpdate(msg))
 }
 
 func (m preferenceModel) View() string {
@@ -187,14 +222,19 @@ func (m preferenceModel) View() string {
 	status := m.renderStatusBar()
 	help := customPreferenceHelp(m.showHelp)
 	help.Width(largeContainerW())
-	c := lipgloss.JoinVertical(lipgloss.Center, title, status, m.vp.View(), help.Render())
-	return c
+	if m.insertMode {
+		o := m.renderInsertInputOverlay(m.preferenceQues[m.cursor].title, m.txtInput.View(), m.txtInput.Width)
+		o = overlay.Place(lipgloss.Center, lipgloss.Center, m.vp.View(), o)
+		return lipgloss.JoinVertical(lipgloss.Center, title, status, o, help.Render())
+	}
+	return lipgloss.JoinVertical(lipgloss.Center, title, status, m.vp.View(), help.Render())
 }
 
-func (m *preferenceModel) handleViewportUpdate(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-	m.vp, cmd = m.vp.Update(msg)
-	return cmd
+func (m *preferenceModel) handleUpdate(msg tea.Msg) tea.Cmd {
+	var cmds [2]tea.Cmd
+	m.vp, cmds[0] = m.vp.Update(msg)
+	m.txtInput, cmds[1] = m.txtInput.Update(msg)
+	return tea.Batch(cmds[:]...)
 }
 
 type scrollDirection = int
@@ -231,16 +271,24 @@ func (m *preferenceModel) handleViewportScroll(direction scrollDirection) {
 	}
 }
 
-func (m *preferenceModel) updateViewPortDimensions() {
+func (m *preferenceModel) updateDimensions() {
 	statusBarH := extStatusBarStyle.GetHeight() + extStatusBarStyle.GetVerticalFrameSize()
 	helpH := lipgloss.Height(customPreferenceHelp(m.showHelp).String())
 	viewportFrameH := m.vp.Style.GetVerticalFrameSize()
 	h := extContainerWorkableH() - (statusBarH + helpH + viewportFrameH)
 	w := largeContainerW() - largeContainerStyle.GetHorizontalFrameSize()
 	m.vp.Width, m.vp.Height = w, h
+	w = 50
+	if m.vp.Width < w {
+		w = m.vp.Width
+
+	}
+	m.txtInput.Width = w - preferenceQueOverlayContainerStyle.GetHorizontalFrameSize() - 4
 	// set the cursor to 0
-	m.cursor = 0
-	m.vp.GotoTop()
+	if !m.insertMode {
+		m.cursor = 0
+		m.vp.GotoTop()
+	}
 }
 
 func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
@@ -289,8 +337,7 @@ func (m preferenceModel) renderTitle(title string) string {
 }
 
 func (m preferenceModel) renderStatusBar() string {
-	scrolled := m.vp.ScrollPercent() * 100
-	s := fmt.Sprintf("Scrolled: %06.2f%%", scrolled)
+	s := fmt.Sprintf("Cursor at %d/%d", m.cursor+1, len(m.preferenceQues))
 	return extStatusBarStyle.Render(s)
 }
 
@@ -309,7 +356,9 @@ func (m preferenceModel) renderInactiveQue(q preferenceQue) string {
 		answerField = renderInactiveBtn(q.check)
 	}
 	if q.pType == input {
-		answerField = renderInactiveInputField(q.prompt, q.input)
+		inputTitle := preferenceQueInputPromptStyle.Render(q.prompt)
+		inputTxt := preferenceQueInputAnsStyle.Render(q.input)
+		answerField = renderInactiveInputField(inputTitle, inputTxt)
 	}
 	ques := lipgloss.JoinVertical(lipgloss.Left, title, descS.Render(q.desc), answerField)
 	return preferenceQueContainerStyle.
@@ -317,7 +366,7 @@ func (m preferenceModel) renderInactiveQue(q preferenceQue) string {
 		Render(ques)
 }
 
-func (m preferenceModel) renderActiveQue(q preferenceQue) string {
+func (m *preferenceModel) renderActiveQue(q preferenceQue) string {
 	title := truncateRenderedTitle(q.title)
 	title = preferenceQueTitleStyle.
 		Background(highlightColor).
@@ -332,7 +381,12 @@ func (m preferenceModel) renderActiveQue(q preferenceQue) string {
 		answerField = renderActiveBtns(q.check)
 	}
 	if q.pType == input {
-		answerField = renderInactiveInputField(q.prompt, q.input)
+		inputTitle := preferenceQueInputPromptStyle.Render(q.prompt)
+		inputTxt := preferenceQueInputAnsStyle.
+			Underline(true).
+			Italic(true).
+			Render(q.input)
+		answerField = renderInactiveInputField(inputTitle, inputTxt)
 	}
 	ques := lipgloss.JoinVertical(lipgloss.Left, title, desc, answerField)
 	return preferenceQueContainerStyle.
@@ -342,7 +396,7 @@ func (m preferenceModel) renderActiveQue(q preferenceQue) string {
 }
 
 func renderInactiveInputField(prompt, placeholder string) string {
-	return fmt.Sprintf("%s: %s", prompt, placeholder)
+	return fmt.Sprintf("%s%s", prompt, placeholder)
 }
 
 func renderInactiveBtn(check bool) string {
@@ -369,13 +423,67 @@ func renderActiveBtns(check bool) string {
 	return lipgloss.JoinHorizontal(lipgloss.Left, btn1.Render("NOPE"), btn2.Render("YUP!"))
 }
 
+func (m preferenceModel) renderInsertInputOverlay(title, inputView string, width int) string {
+	topLeft, topRight := "╭─", "─╮"
+	//topLeft, topRight := "╔═", "═╗"
+	tail := "…"
+	widthWithFrame := width + preferenceQueOverlayContainerStyle.GetHorizontalFrameSize()
+	topBorderCornerW := lipgloss.Width(topLeft + topRight)
+	// widthWithFrame has horizonal border included we need to subtract them, because we have our custom top borders
+	subW := lipgloss.Width(tail) + (topBorderCornerW - preferenceQueOverlayContainerStyle.GetHorizontalBorderSize())
+
+	title = runewidth.Truncate(title, widthWithFrame-subW, tail)
+	title = preferenceQueTitleStyle.
+		Background(highlightColor).
+		Foreground(subduedHighlightColor).
+		Faint(true).
+		Render(title)
+
+	titleW := lipgloss.Width(title)
+	reqTopBorderW := widthWithFrame - 1 // -1 Experimental
+
+	var padAfterTitle string
+	if titleW < reqTopBorderW {
+		n := reqTopBorderW - titleW
+		padAfterTitle = strings.Repeat("─", n)
+		//padAfterTitle = strings.Repeat("═", n)
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(highlightColor)
+	borderBeforeTitle := borderStyle.Render(topLeft)
+	borderAfterTitle := borderStyle.Render(padAfterTitle + topRight)
+	borderTop := borderStyle.
+		MarginTop(1).
+		MarginLeft(preferenceQueOverlayContainerStyle.GetMarginLeft()).
+		MarginRight(preferenceQueOverlayContainerStyle.GetMarginRight()).
+		Render(fmt.Sprintf("%s%s%s", borderBeforeTitle, title, borderAfterTitle))
+
+	body := preferenceQueOverlayContainerStyle.BorderStyle(lipgloss.RoundedBorder()).Width(width + 9).Render(inputView)
+	//body := preferenceQueOverlayContainerStyle.BorderStyle(lipgloss.DoubleBorder()).Width(width + 9).Render(inputView)
+	return lipgloss.JoinVertical(lipgloss.Top, borderTop, body)
+}
+
 func (m *preferenceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 }
 
+func (m *preferenceModel) activateInsertMode() tea.Cmd {
+	m.insertMode = m.preferenceQues[m.cursor].pType == input
+	m.txtInput.Prompt = m.preferenceQues[m.cursor].prompt
+	m.txtInput.SetValue(m.preferenceQues[m.cursor].input)
+	return m.txtInput.Focus()
+}
+
+func (m preferenceModel) resetInsertMode() {
+	m.txtInput.Prompt = ""
+	m.txtInput.SetValue("")
+	m.insertMode = false
+	m.txtInput.Blur()
+}
+
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
-	m.active = false
+	m.active, m.showHelp = false, false
 	return preferenceInactiveCmd
 }
 
@@ -418,18 +526,13 @@ func customPreferenceHelp(show bool) *lipTable.Table {
 		rows = [][]string{{"?", "help"}}
 	} else {
 		rows = [][]string{
-			{"shift+↓/ctrl+↓", "make selection"},
-			{"shift+↑/ctrl+↑", "undo selection"},
-			{"enter", "select/deselect at cursor"},
-			{"enter (when filtering)", "apply filter"},
-			{"ctrl+a", "select all"},
-			{"ctrl+z", "deselect all"},
-			{"/", "filter"},
-			{"esc", "exit filtering"},
-			{"b/pgup", "page up"},
-			{"f/child", "page down"},
-			{"g/home", "go to start"},
-			{"G/end", "go to end"},
+			{"tab/shift+tab", "move cursor (looped)"},
+			{"↓/↑", "move cursor"},
+			{"←/→", "switch option"},
+			{"i", "insert/edit input"},
+			{"enter", "apply inserted input"},
+			{"esc", "exit insert/preference"},
+			{"ctrl+s", "save changes"},
 			{"?", "hide help"},
 		}
 	}
