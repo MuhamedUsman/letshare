@@ -1,3 +1,5 @@
+// Package table exists because of a bug in the bubbles/list component.
+// See https://github.com/charmbracelet/bubbles/pull/774
 package table
 
 import (

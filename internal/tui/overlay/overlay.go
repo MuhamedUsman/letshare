@@ -12,29 +12,23 @@ import (
 var ansiStyleRegexp = regexp.MustCompile(`\x1b[[\d;]*m`)
 
 // Place places foreground content over background content at specified position
-// width and height are the total dimensions of the target area
 // hPos and vPos specify the horizontal and vertical positioning using lipgloss.Position
 // bg is the background content to overlay on
 // fg is the foreground content to overlay
-func Place(width, height int, hPos, vPos lipgloss.Position, bg, fg string) string {
+func Place(hPos, vPos lipgloss.Position, bg, fg string) string {
 	// Parse the background and foreground content
 	bgLines := strings.Split(bg, "\n")
 	fgLines := strings.Split(fg, "\n")
 
-	// Ensure background has enough lines
-	for len(bgLines) < height {
-		bgLines = append(bgLines, "")
-	}
-
-	// Trim or pad background lines to width
-	for i, line := range bgLines {
+	// Calculate background dimensions
+	width := 0
+	for _, line := range bgLines {
 		lineWidth := ansi.StringWidth(line)
-		if lineWidth < width {
-			bgLines[i] = line + strings.Repeat(" ", width-lineWidth)
-		} else if lineWidth > width {
-			bgLines[i] = ansi.Truncate(line, width, "")
+		if lineWidth > width {
+			width = lineWidth
 		}
 	}
+	height := len(bgLines)
 
 	// Get dimensions of the foreground content
 	fgWidth := 0
@@ -86,15 +80,27 @@ func Place(width, height int, hPos, vPos lipgloss.Position, bg, fg string) strin
 		vOffset = 0
 	}
 
+	// Make a copy of background lines to modify
+	resultLines := make([]string, height)
+	copy(resultLines, bgLines)
+
+	// Ensure all lines are at least as wide as the width
+	for i, line := range resultLines {
+		lineWidth := ansi.StringWidth(line)
+		if lineWidth < width {
+			resultLines[i] = line + strings.Repeat(" ", width-lineWidth)
+		}
+	}
+
 	for i, fgLine := range fgLines {
 		bgIdx := i + vOffset
 
 		// Skip if outside bounds
-		if bgIdx < 0 || bgIdx >= len(bgLines) {
+		if bgIdx < 0 || bgIdx >= len(resultLines) {
 			continue
 		}
 
-		bgLine := bgLines[bgIdx]
+		bgLine := resultLines[bgIdx]
 
 		// Add padding if needed
 		if ansi.StringWidth(bgLine) < hOffset {
@@ -106,10 +112,10 @@ func Place(width, height int, hPos, vPos lipgloss.Position, bg, fg string) strin
 		bgRight := truncateLeft(bgLine, hOffset+ansi.StringWidth(fgLine))
 
 		// Combine with the foreground line
-		bgLines[bgIdx] = bgLeft + fgLine + bgRight
+		resultLines[bgIdx] = bgLeft + fgLine + bgRight
 	}
 
-	return strings.Join(bgLines, "\n")
+	return strings.Join(resultLines, "\n")
 }
 
 // truncateLeft returns the portion of a string that would appear

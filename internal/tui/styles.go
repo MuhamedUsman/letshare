@@ -138,13 +138,6 @@ var ( // remoteSpaceModel Styles
 
 var ( // prepSelModel Styles
 
-	preferenceStatusBarStyle = lipgloss.NewStyle().
-					Margin(1, 2).
-					Height(1).
-					Italic(true).
-					Foreground(highlightColor).
-					Faint(true)
-
 	preferenceSectionStyle = lipgloss.NewStyle().
 				BorderForeground(midHighlightColor).
 				BorderStyle(lipgloss.ASCIIBorder()).
@@ -172,6 +165,19 @@ var ( // prepSelModel Styles
 				Foreground(fgColor).
 				Padding(0, 1).
 				MarginRight(1)
+
+	preferenceQueInputPromptStyle = lipgloss.NewStyle().
+					Foreground(highlightColor).
+					Faint(true)
+
+	preferenceQueInputAnsStyle = lipgloss.NewStyle().
+					Foreground(highlightColor)
+
+	preferenceQueOverlayContainerStyle = lipgloss.NewStyle().
+						Border(lipgloss.RoundedBorder(), false, true, true, true).
+						Padding(1).
+						Margin(0, 2, 1, 2).
+						BorderForeground(highlightColor)
 )
 
 var ( // confirmDialogModel Styles
