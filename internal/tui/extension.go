@@ -64,9 +64,6 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		switch msg.String() {
 
 		case "esc":
-			if m.activeChild == preference && m.prevActiveChild != preference {
-				return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
-			}
 			return m, extendChildMsg{child: home, focus: true}.cmd
 
 		case "backspace":
@@ -75,8 +72,10 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 
 	case extendChildMsg:
-		m.prevActiveChild = m.activeChild
-		m.activeChild = msg.child
+		if msg.child != m.activeChild {
+			m.prevActiveChild = m.activeChild
+			m.activeChild = msg.child
+		}
 		if msg.child == home {
 			m.disableKeymap = true
 		}
