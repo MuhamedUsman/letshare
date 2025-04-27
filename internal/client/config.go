@@ -29,25 +29,6 @@ type Config struct {
 	Receive ReceiveConfig `toml:"receive"`
 }
 
-func defaultConfig() (Config, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return Config{}, fmt.Errorf("user home directory look-up: %w", err)
-	}
-	downPath := filepath.Join(homeDir, "Downloads")
-	cfg := Config{
-		Share: ShareConfig{
-			ZipFiles:      true,
-			IsolateFiles:  true,
-			SharedZipName: "shared.zip",
-		},
-		Receive: ReceiveConfig{
-			DownloadFolder: downPath,
-		},
-	}
-	return cfg, nil
-}
-
 func LoadConfig() (Config, error) {
 	f, err := getUserConfigFile()
 	if err != nil {
@@ -85,6 +66,26 @@ func SaveConfig(c Config) error {
 		return fmt.Errorf("writing new config to file: %w", err)
 	}
 	return nil
+}
+
+func defaultConfig() (Config, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("user home directory look-up: %w", err)
+	}
+	downPath := filepath.Join(homeDir, "Downloads")
+	downPath = filepath.ToSlash(downPath)
+	cfg := Config{
+		Share: ShareConfig{
+			ZipFiles:      true,
+			IsolateFiles:  true,
+			SharedZipName: "shared.zip",
+		},
+		Receive: ReceiveConfig{
+			DownloadFolder: downPath,
+		},
+	}
+	return cfg, nil
 }
 
 func getUserConfigFile() (*os.File, error) {
