@@ -23,8 +23,8 @@ const (
 type preferenceSection int
 
 const (
-	sharing preferenceSection = iota
-	receiving
+	share preferenceSection = iota
+	receive
 )
 
 var prefSecNames = []string{
@@ -72,20 +72,20 @@ func initialPreferenceModel() preferenceModel {
 			title: "ZIP FILES?",
 			desc:  "Share selected files as a single zip.",
 			pType: option,
-			pSec:  sharing,
+			pSec:  share,
 		},
 		{
 			title: "ISOLATE FILES?",
-			desc:  "Copy selected files to a separate directory before sharing.",
+			desc:  "Copy selected files to a separate directory before share.",
 			pType: option,
-			pSec:  sharing,
+			pSec:  share,
 		},
 		{
 			title:  "SHARED ZIP NAME?",
 			desc:   "Name of the archive selected files will be zipped into.",
 			prompt: "Name: ",
 			pType:  input,
-			pSec:   receiving,
+			pSec:   share,
 			input:  "Shared-by-Usman",
 		},
 		{
@@ -93,7 +93,7 @@ func initialPreferenceModel() preferenceModel {
 			desc:   "Absolute path to a folder where files will be downloaded.",
 			prompt: "Path: ",
 			pType:  input,
-			pSec:   receiving,
+			pSec:   receive,
 			input:  "Absolute path to a folder where files will be downloaded.",
 		},
 	}
@@ -196,7 +196,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			if m.unsaved {
 				return m, m.confirmDiscardChanges()
 			} else {
-				return m, m.inactivePreference()
+				return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 			}
 
 		case "?":
