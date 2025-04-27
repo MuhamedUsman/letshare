@@ -18,4 +18,16 @@ func main() {
 		slog.Error(err.Error())
 	}
 	slog.Info("Loaded Config", "config", cfg)
+
+	cfg.Share.SharedZipName = "hello.zip"
+	if err = client.SaveConfig(cfg); err != nil {
+		slog.Error(err.Error())
+	}
+
+	cfg, err = client.LoadConfig()
+	if err != nil {
+		slog.Error(err.Error())
+	}
+	slog.Info("Loaded Saved Config", "config", cfg)
+
 }
