@@ -125,11 +125,12 @@ func initialPreferenceModel() preferenceModel {
 }
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	return m.active
 	if m.insertMode {
 		return true
 	}
 	switch msg.String() {
-	case "tab", "down", "enter", "shift+tab", "up", "left", "right", "esc", "?":
+	case "tab", "down", "enter", "shift+tab", "up", "left", "right", "i", "ctrl+s", "esc", "?":
 		return !m.disableKeymap && m.active
 	default:
 		return false
@@ -156,6 +157,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				m.preferenceQues[m.cursor].input = m.txtInput.Value()
+				m.renderViewport()
 				m.resetInsertMode()
 				m.insertMode = false
 
@@ -192,14 +194,17 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			}
 			m.handleViewportScroll(up)
 
-		case "left":
+		case "left", "h":
 			m.preferenceQues[m.cursor].check = false
 
-		case "right":
+		case "right", "l":
 			m.preferenceQues[m.cursor].check = true
 
 		case "i":
 			return m, m.activateInsertMode()
+
+		case "ctrl+s":
+			return m, m.savePreferences(false)
 
 		case "esc":
 			if m.isUnsavedState() {
@@ -222,10 +227,13 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		m.active = msg.child == preference
 
 	case preferencesSavedMsg:
-		return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
+		m.updateConfig()
+		if msg {
+			return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
+		}
 	}
 
-	return m, tea.Batch(m.handleUpdate(msg))
+	return m, m.handleUpdate(msg)
 }
 
 func (m preferenceModel) View() string {
@@ -354,7 +362,7 @@ func (m preferenceModel) renderStatusBar() string {
 	if m.isUnsavedState() {
 		savedStatus = "Unsaved"
 	}
-	s := fmt.Sprintf("Cursor at: %d/%d • State: %s", m.cursor+1, len(m.preferenceQues), savedStatus)
+	s := fmt.Sprintf("Cursor: %d/%d • State: %s", m.cursor+1, len(m.preferenceQues), savedStatus)
 	return extStatusBarStyle.Render(s)
 }
 
@@ -515,28 +523,28 @@ func (m *preferenceModel) inactivePreference() tea.Cmd {
 	return preferenceInactiveCmd
 }
 
-func (m preferenceModel) savePreferences() tea.Cmd {
-	return func() tea.Msg {
-		cfg := client.Config{}
-		for _, q := range m.preferenceQues {
-			switch q.title {
-			case zipFiles:
-				cfg.Share.ZipFiles = q.check
-			case isolateFiles:
-				cfg.Share.IsolateFiles = q.check
-			case sharedZipName:
-				cfg.Share.SharedZipName = q.input
-			case downloadFolder:
-				cfg.Receive.DownloadFolder = q.input
-			}
+func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
+	cfg := client.Config{}
+	for _, q := range m.preferenceQues {
+		switch q.title {
+		case zipFiles:
+			cfg.Share.ZipFiles = q.check
+		case isolateFiles:
+			cfg.Share.IsolateFiles = q.check
+		case sharedZipName:
+			cfg.Share.SharedZipName = q.input
+		case downloadFolder:
+			cfg.Receive.DownloadFolder = q.input
 		}
+	}
+	return func() tea.Msg {
 		if err := client.SaveConfig(cfg); err != nil {
 			return errMsg{
 				err:   err,
 				fatal: true,
 			}
 		}
-		return preferencesSavedMsg{}
+		return preferencesSavedMsg(exit)
 	}
 }
 
@@ -567,14 +575,29 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 	header := "UPDATE PREFERENCES?"
 	body := "Do you want to update preferences, unsaved changes will be lost."
 	yupFunc := func() tea.Cmd {
-		return tea.Batch(m.inactivePreference(), m.savePreferences())
+		return tea.Batch(m.inactivePreference(), m.savePreferences(true))
 	}
 	nopeFunc := func() tea.Cmd {
 		m.resetToSavedState()
 		return m.inactivePreference()
 	}
 
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc)
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc, nil)
+}
+
+func (m *preferenceModel) updateConfig() {
+	for _, q := range m.preferenceQues {
+		switch q.title {
+		case zipFiles:
+			m.config.Share.ZipFiles = q.check
+		case isolateFiles:
+			m.config.Share.IsolateFiles = q.check
+		case sharedZipName:
+			m.config.Share.SharedZipName = q.input
+		case downloadFolder:
+			m.config.Receive.DownloadFolder = q.input
+		}
+	}
 }
 
 func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
@@ -630,7 +653,7 @@ func customPreferenceHelp(show bool) *lipTable.Table {
 		rows = [][]string{
 			{"tab/shift+tab", "move cursor (looped)"},
 			{"↓/↑", "move cursor"},
-			{"←/→", "switch option"},
+			{"←/→ OR l/h", "switch option"},
 			{"i", "insert/edit input"},
 			{"enter", "apply inserted input"},
 			{"esc", "exit insert/preference"},

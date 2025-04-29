@@ -40,8 +40,6 @@ func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 			return m, m.handleChildModelUpdate(msg)
 		}
 		switch msg.String() {
-		case "ctrl+s":
-			m.activeChild = prepSel
 		case "esc":
 			m.activeChild = dirNav
 		}

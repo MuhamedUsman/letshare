@@ -52,6 +52,12 @@ type processSelectionsMsg struct {
 
 func (msg processSelectionsMsg) cmd() tea.Msg { return msg }
 
-type preferencesSavedMsg struct{}
+// preferencesSavedMsg signals the changes to the preferences are saved,
+// bool indicates whether to inactivate the preferences model or not
+type preferencesSavedMsg bool
 
-func preferencesSavedCmd() tea.Msg { return preferencesSavedMsg{} }
+func preferencesSavedCmd(exit bool) tea.Cmd {
+	return func() tea.Msg {
+		return preferencesSavedMsg(exit)
+	}
+}

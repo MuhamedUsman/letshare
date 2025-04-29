@@ -20,6 +20,7 @@ type extensionSpaceModel struct {
 	extendedSpace                focusSpace
 	dirToExtend                  string
 	activeChild, prevActiveChild extChild
+	prevFocus                    focusSpace
 	disableKeymap                bool
 }
 
@@ -67,10 +68,8 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 			return m, extendChildMsg{child: home, focus: true}.cmd
 
 		case "backspace":
-			if m.activeChild == extDirNav {
-				currentFocus = local
-				return m, spaceFocusSwitchCmd
-			}
+			currentFocus = local
+			return m, spaceFocusSwitchCmd
 
 		}
 
@@ -78,6 +77,11 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		if msg.child != m.activeChild {
 			m.prevActiveChild = m.activeChild
 			m.activeChild = msg.child
+		}
+		// so we can switch focus back to prev active space
+		// after preference is deactivated
+		if msg.child == preference {
+			m.prevFocus = currentFocus
 		}
 		if msg.child == home {
 			m.disableKeymap = true
@@ -88,6 +92,10 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 
 	case preferenceInactiveMsg:
+		if m.prevFocus != extension {
+			currentFocus = m.prevFocus
+			return m, tea.Batch(spaceFocusSwitchCmd, extendChildMsg{child: m.prevActiveChild, focus: false}.cmd)
+		}
 		return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
 
 	case spaceFocusSwitchMsg:
