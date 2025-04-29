@@ -500,7 +500,7 @@ func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 		m.resetSelections()
 		return m.readDir(msg.path)
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
 
 func (m *extDirNavModel) confirmDiacardSelection(space extChild) tea.Cmd {
@@ -519,7 +519,7 @@ func (m *extDirNavModel) confirmDiacardSelection(space extChild) tea.Cmd {
 		m.resetSelections()
 		return cmd
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
 
 func (m extDirNavModel) grantSpaceFocusSwitch() bool {

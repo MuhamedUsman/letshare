@@ -26,11 +26,15 @@ func (c confirmationCursor) string() string {
 type confirmDialogMsg struct {
 	header, body string
 	// which btn to be active
-	cursor            confirmationCursor
-	yupFunc, nopeFunc func() tea.Cmd
+	cursor                     confirmationCursor
+	yupFunc, nopeFunc, escFunc func() tea.Cmd
 }
 
-func confirmDialogCmd(header, body string, cursor confirmationCursor, yupFunc, nopeFunc func() tea.Cmd) tea.Cmd {
+func confirmDialogCmd(
+	header, body string,
+	cursor confirmationCursor,
+	yupFunc, nopeFunc, escFunc func() tea.Cmd,
+) tea.Cmd {
 	return func() tea.Msg {
 		return confirmDialogMsg{
 			header:   header,
@@ -38,6 +42,7 @@ func confirmDialogCmd(header, body string, cursor confirmationCursor, yupFunc, n
 			cursor:   cursor,
 			yupFunc:  yupFunc,
 			nopeFunc: nopeFunc,
+			escFunc:  escFunc,
 		}
 	}
 }
@@ -53,7 +58,7 @@ type confirmDialogModel struct {
 	active        bool
 	disableKeymap bool
 	// functions to all on appropriate buttons
-	yupFunc, nopeFunc func() tea.Cmd
+	yupFunc, nopeFunc, escFunc func() tea.Cmd
 }
 
 func initialConfirmDialogModel() confirmDialogModel {
@@ -105,15 +110,15 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 
 		case "esc": // works same as pressing nope btn
 			var cmd tea.Cmd
-			if m.nopeFunc != nil {
-				cmd = m.nopeFunc()
+			if m.escFunc != nil {
+				cmd = m.escFunc()
 			}
 			return m, tea.Batch(cmd, m.hide())
 		}
 
 	case confirmDialogMsg:
 		m.header, m.body = msg.header, msg.body
-		m.yupFunc, m.nopeFunc = msg.yupFunc, msg.nopeFunc
+		m.yupFunc, m.nopeFunc, m.escFunc = msg.yupFunc, msg.nopeFunc, msg.escFunc
 		m.cursor = msg.cursor
 		m.active = true
 		m.prevFocus = currentFocus
@@ -148,12 +153,11 @@ func (m confirmDialogModel) View() string {
 func (m confirmDialogModel) getDialogWidth() int {
 	w := 50
 	// condition to make the dialog centered
-	if !isEven(largeContainerW()) {
-		w -= 1
+	if workableW() < w {
+		w = workableW()
 	}
-	availableW := termW - mainContainerStyle.GetHorizontalFrameSize()
-	if availableW <= w {
-		w = availableW
+	if !isEven(workableW()) {
+		w -= 1
 	}
 	return w
 }
