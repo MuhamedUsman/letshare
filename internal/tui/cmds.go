@@ -6,7 +6,11 @@ type errMsg struct {
 	// err to log
 	err error
 	// errStr: user-friendly err
+	// display if fatal is set to false
 	errStr string
+	// flag to signal log the err to stderr and exit
+	// if true, no need to read errStr, as it may be zero valued
+	fatal bool
 }
 
 func (msg errMsg) cmd() tea.Msg { return msg }
@@ -47,3 +51,7 @@ type processSelectionsMsg struct {
 }
 
 func (msg processSelectionsMsg) cmd() tea.Msg { return msg }
+
+type preferencesSavedMsg struct{}
+
+func preferencesSavedCmd() tea.Msg { return preferencesSavedMsg{} }

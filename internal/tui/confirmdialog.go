@@ -3,15 +3,25 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"strconv"
 )
 
 // cursor indicates current active button
-type confirmationCursor = int
+type confirmationCursor int
 
 const (
-	nope = iota
+	nope confirmationCursor = iota
 	yup
 )
+
+var confirmationCursorStr = []string{"NOPE", "YUP!"}
+
+func (c confirmationCursor) string() string {
+	if c < 0 || int(c) >= len(confirmationCursorStr) {
+		return "unknown option " + strconv.Itoa(int(c))
+	}
+	return confirmationCursorStr[c]
+}
 
 type confirmDialogMsg struct {
 	header, body string
@@ -39,8 +49,8 @@ type confirmDialogModel struct {
 	// prevFocus remembers the previous focused child
 	// and releases it accordingly
 	prevFocus focusSpace
-	// render signals this model's view must be rendered
-	render        bool
+	// active signals this model's view must be rendered
+	active        bool
 	disableKeymap bool
 	// functions to all on appropriate buttons
 	yupFunc, nopeFunc func() tea.Cmd
@@ -53,7 +63,7 @@ func initialConfirmDialogModel() confirmDialogModel {
 func (m confirmDialogModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "enter", "tab", "shift+tab", "left", "right", "h", "l", "esc":
-		return m.render
+		return m.active
 	default:
 		return false
 	}
@@ -105,7 +115,7 @@ func (m confirmDialogModel) Update(msg tea.Msg) (confirmDialogModel, tea.Cmd) {
 		m.header, m.body = msg.header, msg.body
 		m.yupFunc, m.nopeFunc = msg.yupFunc, msg.nopeFunc
 		m.cursor = msg.cursor
-		m.render = true
+		m.active = true
 		m.prevFocus = currentFocus
 		currentFocus = confirmation
 		return m, spaceFocusSwitchCmd
@@ -149,7 +159,7 @@ func (m confirmDialogModel) getDialogWidth() int {
 }
 
 func (m *confirmDialogModel) hide() tea.Cmd {
-	m.render = false
+	m.active = false
 	m.header, m.body = "", ""
 	m.yupFunc, m.nopeFunc = nil, nil
 	currentFocus = m.prevFocus

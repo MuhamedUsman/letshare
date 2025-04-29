@@ -67,7 +67,10 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 			return m, extendChildMsg{child: home, focus: true}.cmd
 
 		case "backspace":
-			//return m, tea.Sequence(m.grantSpaceFocusSwitch(local), m.handleChildModelUpdate(msg))
+			if m.activeChild == extDirNav {
+				currentFocus = local
+				return m, spaceFocusSwitchCmd
+			}
 
 		}
 

@@ -4,6 +4,8 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"log/slog"
+	"os"
 )
 
 type focusSpace int
@@ -56,6 +58,9 @@ func InitialMainModel() MainModel {
 }
 
 func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	if msg.String() == "ctrl+c" {
+		return false
+	}
 	switch currentFocus {
 	case local:
 		return m.localSpace.capturesKeyEvent(msg)
@@ -91,7 +96,10 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "ctrl+p":
-			return m, extendChildMsg{child: preference, focus: true}.cmd
+			// don't show preferences if the confirmation dialog is active
+			if !m.confirmation.active {
+				return m, extendChildMsg{child: preference, focus: true}.cmd
+			}
 
 		case "tab":
 			// loop currentFocus & extendSpace b/w local, extensionSpace and remote tabs
@@ -114,6 +122,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spaceFocusSwitchMsg:
 		m.updateKeymapsByFocus()
+
+	case errMsg:
+		if msg.fatal {
+			slog.Error(msg.err.Error())
+			os.Exit(1)
+		}
+
 	}
 
 	return m, m.handleChildModelUpdates(msg)
@@ -121,7 +136,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m MainModel) View() string {
 	c := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
-	if m.confirmation.render {
+	if m.confirmation.active {
 		c = overlay.Place(lipgloss.Center, lipgloss.Center, c, m.confirmation.View())
 	}
 	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(c)
