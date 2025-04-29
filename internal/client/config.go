@@ -77,8 +77,8 @@ func defaultConfig() (Config, error) {
 	downPath = filepath.ToSlash(downPath)
 	cfg := Config{
 		Share: ShareConfig{
-			ZipFiles:      true,
-			IsolateFiles:  true,
+			ZipFiles:      false,
+			IsolateFiles:  false,
 			SharedZipName: "shared.zip",
 		},
 		Receive: ReceiveConfig{

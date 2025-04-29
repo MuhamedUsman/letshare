@@ -93,6 +93,10 @@ func getTableCols(tableWidth int) []table.Column {
 }
 
 func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	// textInput model captures keys, so we need to handle it here
+	if m.filterState == filtering {
+		return true
+	}
 	switch msg.String() {
 	case "enter":
 		return m.filterState == filtering || (m.isValidTableShortcut() && m.filterState != filtering)
@@ -232,7 +236,7 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 
 func (m extDirNavModel) View() string {
 	help := customExtDirTableHelp(m.showHelp)
-	help.Width(largeContainerW())
+	help.Width(m.extDirTable.Width() - 2)
 	title := "Extended Dir: " + filepath.Base(m.dirPath)
 	tail := "…"
 	w := largeContainerW() - (lipgloss.Width(tail) + titleStyle.GetHorizontalPadding() + lipgloss.Width(tail))
@@ -493,6 +497,7 @@ func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 	body := "All the selections will be lost..."
 	yupFunc := func() tea.Cmd {
 		m.focusOnExtend = msg.focus
+		m.resetSelections()
 		return m.readDir(msg.path)
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
@@ -526,7 +531,7 @@ func (m *extDirNavModel) updateKeymap(disable bool) {
 }
 
 func customExtDirTableHelp(show bool) *lipTable.Table {
-	baseStyle := lipgloss.NewStyle().Margin(0, 2)
+	baseStyle := lipgloss.NewStyle()
 	var rows [][]string
 	if !show {
 		rows = [][]string{{"?", "help"}}

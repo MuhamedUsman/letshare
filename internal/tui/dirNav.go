@@ -114,6 +114,10 @@ func initialDirNavModel() dirNavModel {
 }
 
 func (m dirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	// textInput model will capture key events when in filtering state
+	if m.dirList.FilterState() == list.Filtering {
+		return true
+	}
 	switch msg.String() {
 	case "enter":
 		return m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil
@@ -229,7 +233,7 @@ func (m dirNavModel) View() string {
 	tail := "..."
 	subW := m.dirList.Styles.TitleBar.GetHorizontalFrameSize() // subtract Width
 	subW += lipgloss.Width(tail)
-	m.dirList.Title = runewidth.Truncate(m.dirList.Title, m.dirList.Width()-subW, "...")
+	m.dirList.Title = runewidth.Truncate(m.dirList.Title, m.dirList.Width()-subW, "…")
 	s := lipgloss.JoinVertical(lipgloss.Top, m.dirList.View(), ht.Render())
 	return smallContainerStyle.Width(smallContainerW()).Render(s)
 }
@@ -332,15 +336,15 @@ func customDelegate() list.ItemDelegate {
 }
 
 func customDirListHelpTable(show bool) *table.Table {
-	baseStyle := lipgloss.NewStyle().Margin(0, 1)
+	baseStyle := lipgloss.NewStyle()
 	var rows [][]string
 	if !show {
 		rows = [][]string{{"?", "help"}}
 	} else {
 		rows = [][]string{
 			{"/", "filter"},
-			{"child", "extend dir"},
-			{"2x(child)", "extend dir focused"},
+			{"space", "extend dir"},
+			{"2x(space)", "extend dir focused"},
 			{"enter", "into dir"},
 			{"backspace", "out of dir"},
 			{"←/→", "shuffle pages"},

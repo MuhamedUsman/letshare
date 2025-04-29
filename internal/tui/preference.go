@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/client"
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -9,6 +10,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/mattn/go-runewidth"
+	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -39,13 +42,39 @@ func (ps preferenceSection) string() string {
 	return prefSecNames[ps]
 }
 
+type preferenceKey int
+
+const (
+	zipFiles preferenceKey = iota
+	isolateFiles
+	sharedZipName
+	downloadFolder
+)
+
+var prefKeyNames = []string{
+	"ZIP FILES?",
+	"ISOLATE FILES?",
+	"SHARED ZIP NAME",
+	"DOWNLOAD FOLDER",
+}
+
+func (pk preferenceKey) string() string {
+	if int(pk) < 0 || int(pk) >= len(prefKeyNames) {
+		return "unknown preference key " + strconv.Itoa(int(pk))
+	}
+	return prefKeyNames[pk]
+}
+
 type preferenceQue struct {
-	title, desc              string
-	pType                    preferenceType
-	pSec                     preferenceSection
+	title preferenceKey
+	desc  string
+	pType preferenceType
+	pSec  preferenceSection
+	// a pSec of an input type has two fields
 	prompt, input            string
 	startsAtLine, endsAtLine int
-	check                    bool
+	// a pSec of an option type has this check
+	check bool // true -> yup!, false -> nope
 }
 
 type preferenceInactiveMsg struct{}
@@ -55,51 +84,26 @@ type preferenceInactiveMsg struct{}
 func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
 
 type preferenceModel struct {
-	vp                      viewport.Model
-	txtInput                textinput.Model
-	preferenceQues          []preferenceQue
-	titleStyle              lipgloss.Style
-	cursor                  int
-	showHelp, disableKeymap bool
-	// modes
-	unsaved, active bool
-	insertMode      bool
+	vp             viewport.Model
+	txtInput       textinput.Model
+	preferenceQues []preferenceQue
+	// used to check unsaved state
+	config                                      *client.Config
+	titleStyle                                  lipgloss.Style
+	cursor                                      int
+	showHelp, disableKeymap, active, insertMode bool
 }
 
 func initialPreferenceModel() preferenceModel {
-	preferenceQues := []preferenceQue{
-		{
-			title: "ZIP FILES?",
-			desc:  "Share selected files as a single zip.",
-			pType: option,
-			pSec:  share,
-		},
-		{
-			title: "ISOLATE FILES?",
-			desc:  "Copy selected files to a separate directory before share.",
-			pType: option,
-			pSec:  share,
-		},
-		{
-			title:  "SHARED ZIP NAME?",
-			desc:   "Name of the archive selected files will be zipped into.",
-			prompt: "Name: ",
-			pType:  input,
-			pSec:   share,
-			input:  "Shared-by-Usman",
-		},
-		{
-			title:  "DOWNLOAD FOLDER?",
-			desc:   "Absolute path to a folder where files will be downloaded.",
-			prompt: "Path: ",
-			pType:  input,
-			pSec:   receive,
-			input:  "Absolute path to a folder where files will be downloaded.",
-		},
+	cfg, err := client.LoadConfig()
+	if err != nil {
+		slog.Error("unable to load config:", "error", err)
+		os.Exit(1)
 	}
+	ques := populatePreferencesFromConfig(cfg)
 
 	vp := viewport.New(0, 0)
-	vp.Style = vp.Style.PaddingTop(1)
+	vp.Style = vp.Style.Padding(1, 1, 0, 1)
 	vp.MouseWheelEnabled = false
 	vp.KeyMap = viewport.KeyMap{} // disable keymap
 
@@ -108,17 +112,22 @@ func initialPreferenceModel() preferenceModel {
 	txtInput.ShowSuggestions = true
 	txtInput.PromptStyle = txtInput.PromptStyle.Foreground(midHighlightColor)
 	txtInput.TextStyle = txtInput.TextStyle.Foreground(highlightColor)
-	txtInput.Cursor.Style = txtInput.Cursor.Style.Foreground(highlightColor)
+	txtInput.Cursor.TextStyle = txtInput.Cursor.Style.Foreground(highlightColor)
+	txtInput.Cursor.Style = txtInput.Cursor.TextStyle.Reverse(true)
 	txtInput.PlaceholderStyle = txtInput.PlaceholderStyle.Foreground(subduedHighlightColor)
 
 	return preferenceModel{
-		preferenceQues: preferenceQues,
+		preferenceQues: ques,
+		config:         &cfg,
 		vp:             vp,
 		txtInput:       txtInput,
 	}
 }
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	if m.insertMode {
+		return true
+	}
 	switch msg.String() {
 	case "tab", "down", "enter", "shift+tab", "up", "left", "right", "esc", "?":
 		return !m.disableKeymap && m.active
@@ -153,8 +162,8 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			case "esc":
 				m.insertMode = false
 				m.resetInsertMode()
-				return m, m.handleUpdate(msg)
 			}
+			return m, m.handleUpdate(msg)
 		}
 
 		// No other keymap, until input is escaped
@@ -193,8 +202,8 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			return m, m.activateInsertMode()
 
 		case "esc":
-			if m.unsaved {
-				return m, m.confirmDiscardChanges()
+			if m.isUnsavedState() {
+				return m, m.confirmSaveChanges()
 			} else {
 				return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 			}
@@ -212,6 +221,8 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	case extendChildMsg:
 		m.active = msg.child == preference
 
+	case preferencesSavedMsg:
+		return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 	}
 
 	return m, tea.Batch(m.handleUpdate(msg))
@@ -221,9 +232,9 @@ func (m preferenceModel) View() string {
 	title := m.renderTitle("Preferences")
 	status := m.renderStatusBar()
 	help := customPreferenceHelp(m.showHelp)
-	help.Width(largeContainerW())
+	help.Width(largeContainerW() - 2)
 	if m.insertMode {
-		o := m.renderInsertInputOverlay(m.preferenceQues[m.cursor].title, m.txtInput.View(), m.txtInput.Width)
+		o := m.renderInsertInputOverlay(m.preferenceQues[m.cursor].title.string(), m.txtInput.View(), m.txtInput.Width)
 		o = overlay.Place(lipgloss.Center, lipgloss.Center, m.vp.View(), o)
 		return lipgloss.JoinVertical(lipgloss.Center, title, status, o, help.Render())
 	}
@@ -276,15 +287,17 @@ func (m *preferenceModel) updateDimensions() {
 	helpH := lipgloss.Height(customPreferenceHelp(m.showHelp).String())
 	viewportFrameH := m.vp.Style.GetVerticalFrameSize()
 	h := extContainerWorkableH() - (statusBarH + helpH + viewportFrameH)
-	w := largeContainerW() - largeContainerStyle.GetHorizontalFrameSize()
+	w := largeContainerW()
 	m.vp.Width, m.vp.Height = w, h
 	w = 50
 	if m.vp.Width < w {
 		w = m.vp.Width
 
 	}
-	m.txtInput.Width = w - preferenceQueOverlayContainerStyle.GetHorizontalFrameSize() - 4
-	// set the cursor to 0
+	m.txtInput.Width = w - 5 -
+		preferenceQueOverlayContainerStyle.GetHorizontalFrameSize() -
+		m.vp.Style.GetHorizontalFrameSize()
+
 	if !m.insertMode {
 		m.cursor = 0
 		m.vp.GotoTop()
@@ -337,18 +350,22 @@ func (m preferenceModel) renderTitle(title string) string {
 }
 
 func (m preferenceModel) renderStatusBar() string {
-	s := fmt.Sprintf("Cursor at %d/%d", m.cursor+1, len(m.preferenceQues))
+	savedStatus := "Saved"
+	if m.isUnsavedState() {
+		savedStatus = "Unsaved"
+	}
+	s := fmt.Sprintf("Cursor at: %d/%d • State: %s", m.cursor+1, len(m.preferenceQues), savedStatus)
 	return extStatusBarStyle.Render(s)
 }
 
 func (m preferenceModel) renderSectionTitle(t string) string {
 	return preferenceSectionStyle.
-		Width(m.vp.Width - preferenceSectionStyle.GetHorizontalBorderSize()).
+		Width(m.vp.Width - m.vp.Style.GetHorizontalFrameSize() - preferenceSectionStyle.GetHorizontalBorderSize()).
 		Render(t)
 }
 
 func (m preferenceModel) renderInactiveQue(q preferenceQue) string {
-	title := truncateRenderedTitle(q.title)
+	title := truncateRenderedTitle(q.title.string())
 	title = preferenceQueTitleStyle.Render(title)
 	descS := preferenceQueDescStyle
 	var answerField string
@@ -362,12 +379,12 @@ func (m preferenceModel) renderInactiveQue(q preferenceQue) string {
 	}
 	ques := lipgloss.JoinVertical(lipgloss.Left, title, descS.Render(q.desc), answerField)
 	return preferenceQueContainerStyle.
-		Width(m.vp.Width - preferenceQueContainerStyle.GetHorizontalBorderSize()).
+		Width(m.vp.Width - m.vp.Style.GetHorizontalFrameSize() - preferenceQueContainerStyle.GetHorizontalBorderSize()).
 		Render(ques)
 }
 
 func (m *preferenceModel) renderActiveQue(q preferenceQue) string {
-	title := truncateRenderedTitle(q.title)
+	title := truncateRenderedTitle(q.title.string())
 	title = preferenceQueTitleStyle.
 		Background(highlightColor).
 		Foreground(subduedHighlightColor).
@@ -391,7 +408,7 @@ func (m *preferenceModel) renderActiveQue(q preferenceQue) string {
 	ques := lipgloss.JoinVertical(lipgloss.Left, title, desc, answerField)
 	return preferenceQueContainerStyle.
 		BorderForeground(highlightColor).
-		Width(m.vp.Width - preferenceQueContainerStyle.GetHorizontalBorderSize()).
+		Width(m.vp.Width - m.vp.Style.GetHorizontalFrameSize() - preferenceQueContainerStyle.GetHorizontalBorderSize()).
 		Render(ques)
 }
 
@@ -400,9 +417,9 @@ func renderInactiveInputField(prompt, placeholder string) string {
 }
 
 func renderInactiveBtn(check bool) string {
-	s := "NOPE"
+	s := nope.string()
 	if check {
-		s = "YUP!"
+		s = yup.string()
 	}
 	return preferenceQueBtnStyle.
 		Background(highlightColor).
@@ -425,14 +442,10 @@ func renderActiveBtns(check bool) string {
 
 func (m preferenceModel) renderInsertInputOverlay(title, inputView string, width int) string {
 	topLeft, topRight := "╭─", "─╮"
-	//topLeft, topRight := "╔═", "═╗"
 	tail := "…"
-	widthWithFrame := width + preferenceQueOverlayContainerStyle.GetHorizontalFrameSize()
 	topBorderCornerW := lipgloss.Width(topLeft + topRight)
-	// widthWithFrame has horizonal border included we need to subtract them, because we have our custom top borders
-	subW := lipgloss.Width(tail) + (topBorderCornerW - preferenceQueOverlayContainerStyle.GetHorizontalBorderSize())
 
-	title = runewidth.Truncate(title, widthWithFrame-subW, tail)
+	title = runewidth.Truncate(title, width+topBorderCornerW+lipgloss.Width(tail), tail)
 	title = preferenceQueTitleStyle.
 		Background(highlightColor).
 		Foreground(subduedHighlightColor).
@@ -440,13 +453,14 @@ func (m preferenceModel) renderInsertInputOverlay(title, inputView string, width
 		Render(title)
 
 	titleW := lipgloss.Width(title)
-	reqTopBorderW := widthWithFrame - 1 // -1 Experimental
+	reqTopBorderW := width + topBorderCornerW - 1 +
+		preferenceQueOverlayContainerStyle.GetHorizontalPadding() +
+		preferenceQueOverlayContainerStyle.GetHorizontalBorderSize()
 
 	var padAfterTitle string
 	if titleW < reqTopBorderW {
 		n := reqTopBorderW - titleW
 		padAfterTitle = strings.Repeat("─", n)
-		//padAfterTitle = strings.Repeat("═", n)
 	}
 
 	borderStyle := lipgloss.NewStyle().Foreground(highlightColor)
@@ -459,7 +473,6 @@ func (m preferenceModel) renderInsertInputOverlay(title, inputView string, width
 		Render(fmt.Sprintf("%s%s%s", borderBeforeTitle, title, borderAfterTitle))
 
 	body := preferenceQueOverlayContainerStyle.BorderStyle(lipgloss.RoundedBorder()).Width(width + 9).Render(inputView)
-	//body := preferenceQueOverlayContainerStyle.BorderStyle(lipgloss.DoubleBorder()).Width(width + 9).Render(inputView)
 	return lipgloss.JoinVertical(lipgloss.Top, borderTop, body)
 }
 
@@ -481,34 +494,123 @@ func (m preferenceModel) resetInsertMode() {
 	m.txtInput.Blur()
 }
 
+func (m *preferenceModel) resetToSavedState() {
+	for i, q := range m.preferenceQues {
+		switch q.title {
+		case zipFiles:
+			m.preferenceQues[i].check = m.config.Share.ZipFiles
+		case isolateFiles:
+			m.preferenceQues[i].check = m.config.Share.IsolateFiles
+		case sharedZipName:
+			m.preferenceQues[i].input = m.config.Share.SharedZipName
+		case downloadFolder:
+			m.preferenceQues[i].input = m.config.Receive.DownloadFolder
+		}
+	}
+}
+
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
 	m.active, m.showHelp = false, false
 	return preferenceInactiveCmd
 }
 
+func (m preferenceModel) savePreferences() tea.Cmd {
+	return func() tea.Msg {
+		cfg := client.Config{}
+		for _, q := range m.preferenceQues {
+			switch q.title {
+			case zipFiles:
+				cfg.Share.ZipFiles = q.check
+			case isolateFiles:
+				cfg.Share.IsolateFiles = q.check
+			case sharedZipName:
+				cfg.Share.SharedZipName = q.input
+			case downloadFolder:
+				cfg.Receive.DownloadFolder = q.input
+			}
+		}
+		if err := client.SaveConfig(cfg); err != nil {
+			return errMsg{
+				err:   err,
+				fatal: true,
+			}
+		}
+		return preferencesSavedMsg{}
+	}
+}
+
+func (m preferenceModel) isUnsavedState() bool {
+	var unsaved bool
+	for _, q := range m.preferenceQues {
+		// early return so we don't loop for other titles
+		if unsaved {
+			return unsaved
+		}
+		switch q.title {
+		case zipFiles:
+			unsaved = q.check != m.config.Share.ZipFiles
+		case isolateFiles:
+			unsaved = q.check != m.config.Share.IsolateFiles
+		case sharedZipName:
+			unsaved = q.input != m.config.Share.SharedZipName
+		case downloadFolder:
+			unsaved = q.input != m.config.Receive.DownloadFolder
+		}
+	}
+	return unsaved
+}
+
 // grant the discard request and envelops "esc" as a command for yupFunc
-func (m *preferenceModel) confirmDiscardChanges() tea.Cmd {
+func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 	selBtn := yup
-	header := "DISCARD CHANGES?"
-	body := "Unsaved preferences will be lost."
+	header := "UPDATE PREFERENCES?"
+	body := "Do you want to update preferences, unsaved changes will be lost."
 	yupFunc := func() tea.Cmd {
+		return tea.Batch(m.inactivePreference(), m.savePreferences())
+	}
+	nopeFunc := func() tea.Cmd {
 		m.resetToSavedState()
 		return m.inactivePreference()
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil)
+
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc)
 }
 
-func (m *preferenceModel) resetToSavedState() {
-
-}
-
-func (m preferenceModel) getLastVisibleLine() int {
-	return int(m.vp.ScrollPercent()*float64(m.vp.TotalLineCount())) + (m.vp.VisibleLineCount())
-}
-
-func (m preferenceModel) getFirstVisibleLine() int {
-	return int(m.vp.ScrollPercent() * float64(m.vp.TotalLineCount()))
+func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
+	return []preferenceQue{
+		{
+			title: zipFiles,
+			desc:  "Share selected files as a single zip.",
+			pType: option,
+			pSec:  share,
+			check: cfg.Share.ZipFiles,
+		},
+		{
+			title: isolateFiles,
+			desc:  "Copy selected files to a separate directory before share.",
+			pType: option,
+			pSec:  share,
+			check: cfg.Share.IsolateFiles,
+		},
+		{
+			title:  sharedZipName,
+			desc:   "Name of the archive selected files will be zipped into.",
+			prompt: "Name: ",
+			pType:  input,
+			pSec:   share,
+			input:  cfg.Share.SharedZipName,
+		},
+		{
+			//title:  "DOWNLOAD FOLDER?",
+			title:  downloadFolder,
+			desc:   "Absolute path to a folder where files will be downloaded.",
+			prompt: "Path: ",
+			pType:  input,
+			pSec:   receive,
+			input:  cfg.Receive.DownloadFolder,
+		},
+	}
 }
 
 func truncateRenderedTitle(title string) string {
@@ -520,7 +622,7 @@ func truncateRenderedTitle(title string) string {
 }
 
 func customPreferenceHelp(show bool) *lipTable.Table {
-	baseStyle := lipgloss.NewStyle().Margin(0, 2)
+	baseStyle := lipgloss.NewStyle()
 	var rows [][]string
 	if !show {
 		rows = [][]string{{"?", "help"}}

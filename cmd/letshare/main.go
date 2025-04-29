@@ -7,17 +7,18 @@ import (
 	"github.com/lmittmann/tint"
 	"log/slog"
 	"os"
+	"time"
 )
 
+func init() {
+	h := tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: time.Kitchen})
+	slog.SetDefault(slog.New(h))
+}
+
 func main() {
-
-	slg := slog.New(tint.NewHandler(os.Stderr, nil))
-
 	f, err := tea.LogToFile("Letshare.log", "Letshare")
-
-	slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{AddSource: true})))
 	if err != nil {
-		slg.Error(err.Error())
+		slog.Error(err.Error())
 		os.Exit(1)
 	}
 	defer f.Close()
@@ -31,8 +32,7 @@ func main() {
 		tea.WithReportFocus(),
 	).Run()
 	if err != nil {
-		slg.Error(err.Error())
+		slog.Error(err.Error())
 		os.Exit(1)
 	}
-
 }
