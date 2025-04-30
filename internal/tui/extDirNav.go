@@ -133,8 +133,7 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 				m.filterState = filterApplied
 				m.filter.Blur()
 				m.extDirTable.Focus()
-			}
-			if m.isValidTableShortcut() && m.filterState != filtering {
+			} else if m.isValidTableShortcut() && m.filterState != filtering {
 				m.extDirTable.Focus()
 				sel := m.extDirTable.Cursor()
 				if m.filterState != unfiltered {
@@ -183,15 +182,13 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 			}
 
 		case "esc":
-			if m.getSelectionCount() > 0 {
-				return m, m.confirmDiacardSelection(home)
-			}
 			if m.filterState != unfiltered {
 				m.resetFilter()
 				m.extDirTable.Focus()
 				m.populateTable(m.dirContents.contents)
+			} else if m.getSelectionCount() > 0 {
+				return m, m.confirmDiacardSelection(home)
 			}
-
 		}
 
 	case extendDirMsg:

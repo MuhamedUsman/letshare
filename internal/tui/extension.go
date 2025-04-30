@@ -130,20 +130,10 @@ func (m extensionSpaceModel) View() string {
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-	switch m.activeChild {
-	case extDirNav:
-		m.extDirNav, cmd = m.extDirNav.Update(msg)
-		return cmd
-	case preference:
-		m.preference, cmd = m.preference.Update(msg)
-		return cmd
-	default:
-		var cmds [2]tea.Cmd
-		m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
-		m.preference, cmds[1] = m.preference.Update(msg)
-		return tea.Batch(cmds[:]...)
-	}
+	var cmds [2]tea.Cmd
+	m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
+	m.preference, cmds[1] = m.preference.Update(msg)
+	return tea.Batch(cmds[:]...)
 }
 
 func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
@@ -160,6 +150,6 @@ func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
 
 func (m *extensionSpaceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
-	m.extDirNav.updateKeymap(disable || m.activeChild == home)
-	m.preference.updateKeymap(disable || m.activeChild == home)
+	m.extDirNav.updateKeymap(disable || m.activeChild != extDirNav)
+	m.preference.updateKeymap(disable || m.activeChild != preference)
 }

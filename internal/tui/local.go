@@ -8,7 +8,6 @@ type activeLocalChild = int
 
 const (
 	dirNav activeLocalChild = iota
-	prepSel
 )
 
 type localSpaceModel struct {
@@ -20,7 +19,6 @@ type localSpaceModel struct {
 func initialLocalSpaceModel() localSpaceModel {
 	return localSpaceModel{
 		dirNavigation: initialDirNavModel(),
-		//activeChild:   prepSel,
 	}
 }
 
