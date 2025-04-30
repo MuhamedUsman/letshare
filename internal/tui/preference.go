@@ -126,15 +126,6 @@ func initialPreferenceModel() preferenceModel {
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	return m.active
-	if m.insertMode {
-		return true
-	}
-	switch msg.String() {
-	case "tab", "down", "enter", "shift+tab", "up", "left", "right", "i", "ctrl+s", "esc", "?":
-		return !m.disableKeymap && m.active
-	default:
-		return false
-	}
 }
 
 func (m preferenceModel) Init() tea.Cmd {
@@ -204,7 +195,9 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			return m, m.activateInsertMode()
 
 		case "ctrl+s":
-			return m, m.savePreferences(false)
+			if m.isUnsavedState() {
+				return m, m.savePreferences(false)
+			}
 
 		case "esc":
 			if m.isUnsavedState() {
@@ -231,6 +224,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		if msg {
 			return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 		}
+
 	}
 
 	return m, m.handleUpdate(msg)
@@ -519,7 +513,7 @@ func (m *preferenceModel) resetToSavedState() {
 
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
-	m.active, m.showHelp = false, false
+	m.active = false
 	return preferenceInactiveCmd
 }
 
