@@ -29,15 +29,23 @@ type extendDirMsg struct {
 
 func (msg extendDirMsg) cmd() tea.Msg { return msg }
 
-// extendChildMsg is sent by extDirNavModel to extensionSpaceModel to signal
+// extensionChildSwitchMsg is sent by extDirNavModel to extensionSpaceModel to signal
 // the title change and whether to make it focused
-type extendChildMsg struct {
+type extensionChildSwitchMsg struct {
 	child extChild
 	// marker to decide whether to make the extension child focused
 	focus bool
 }
 
-func (msg extendChildMsg) cmd() tea.Msg { return msg }
+func (msg extensionChildSwitchMsg) cmd() tea.Msg { return msg }
+
+type localChildSwitchMsg struct {
+	child localChild
+	// marker to decide whether to make the local child focused
+	focus bool
+}
+
+func (msg localChildSwitchMsg) cmd() tea.Msg { return msg }
 
 // spaceFocusSwitchMsg manages child switching using tab & shift+tab
 type spaceFocusSwitchMsg struct{}

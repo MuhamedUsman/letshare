@@ -98,7 +98,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			// don't show preferences if the confirmation dialog is active
 			if !m.confirmation.active {
-				return m, extendChildMsg{child: preference, focus: true}.cmd
+				return m, extensionChildSwitchMsg{child: preference, focus: true}.cmd
 			}
 
 		case "tab":
