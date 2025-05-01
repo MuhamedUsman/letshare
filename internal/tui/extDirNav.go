@@ -98,9 +98,9 @@ func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 		return true
 	}
 	switch msg.String() {
-	case "enter":
+	case "enter", "ctrl+s":
 		return m.filterState == filtering || (m.isValidTableShortcut() && m.filterState != filtering)
-	case "up", "down", "?", "ctrl+a", "ctrl+z", "ctrl+s":
+	case "up", "down", "?", "ctrl+a", "ctrl+z":
 		return true
 	case "/", "shift+up", "ctrl+up", "shift+down", "ctrl+down":
 		return m.isValidTableShortcut()
@@ -168,6 +168,11 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		case "ctrl+z":
 			m.selectAll(false)
 
+		case "ctrl+s":
+			if m.filterState != filtering {
+				return m, m.confirmSend()
+			}
+
 		case "/":
 			if m.isValidTableShortcut() {
 				m.filterState = filtering
@@ -187,14 +192,14 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 				m.extDirTable.Focus()
 				m.populateTable(m.dirContents.contents)
 			} else if m.getSelectionCount() > 0 {
-				return m, m.confirmDiacardSelection(home)
+				return m, m.confirmDiacardSel(home)
 			}
 		}
 
 	case extendDirMsg:
 		// the user is trying to extend a new dir, but the previous extended dir has selected items
 		if m.getSelectionCount() > 0 {
-			return m, m.showSelConfirmDialog(msg)
+			return m, m.confirmDiscardSelOnNewExtDir(msg)
 		}
 		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
@@ -210,7 +215,7 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		}
 		m.extDirTable.SetCursor(0)
 		// if table is focused, then extensionSpace child also needs to be focused
-		return m, extendChildMsg{extDirNav, m.focusOnExtend}.cmd
+		return m, extensionChildSwitchMsg{extDirNav, m.focusOnExtend}.cmd
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
@@ -488,7 +493,22 @@ func (m extDirNavModel) getSelectionCount() int {
 	return count
 }
 
-func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
+func (m extDirNavModel) selectedFilenames() (filenames []string, dirs, files int) {
+	filenames = make([]string, 0, len(m.dirContents.contents))
+	for _, c := range m.dirContents.contents {
+		filenames = append(filenames, c.name)
+		if c.selection {
+			if c.ext == "dir" {
+				dirs++
+			} else {
+				files++
+			}
+		}
+	}
+	return
+}
+
+func (m *extDirNavModel) confirmDiscardSelOnNewExtDir(msg extendDirMsg) tea.Cmd {
 	selBtn := yup
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
@@ -500,12 +520,12 @@ func (m *extDirNavModel) showSelConfirmDialog(msg extendDirMsg) tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
 
-func (m *extDirNavModel) confirmDiacardSelection(space extChild) tea.Cmd {
+func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	// when filtering, we will not grant an extension switch
 	if m.filterState != unfiltered {
 		return nil
 	}
-	cmd := extendChildMsg{space, true}.cmd
+	cmd := extensionChildSwitchMsg{space, true}.cmd
 	if m.getSelectionCount() == 0 {
 		return cmd
 	}
@@ -515,6 +535,34 @@ func (m *extDirNavModel) confirmDiacardSelection(space extChild) tea.Cmd {
 	yupFunc := func() tea.Cmd {
 		m.resetSelections()
 		return cmd
+	}
+	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
+}
+
+func (m *extDirNavModel) confirmSend() tea.Cmd {
+	filenames, dirs, files := m.selectedFilenames()
+	var dirStr, fileStr, space string
+	if dirs > 0 {
+		dirStr = fmt.Sprintf("%d Dir/s", dirs)
+	}
+	if files > 0 {
+		fileStr = fmt.Sprintf("%d File/s", files)
+	}
+	if dirs > 0 && files > 0 {
+		space = " and "
+	}
+	selBtn := yup
+	header := "PROCEED?"
+	body := fmt.Sprintf(`Selected “%s%s%s” will be processed as per preferences. To change preferences, press “esc” & “ctrl+p”.`,
+		dirStr, space, fileStr)
+	yupFunc := func() tea.Cmd {
+		m.resetSelections()
+		return processSelectionsMsg{
+			parentPath: m.dirPath,
+			filenames:  filenames,
+			dirs:       dirs,
+			files:      files,
+		}.cmd
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
@@ -538,12 +586,11 @@ func customExtDirTableHelp(show bool) *lipTable.Table {
 			{"shift+↑/ctrl+↑", "undo selection"},
 			{"enter", "select/deselect at cursor"},
 			{"enter (when filtering)", "apply filter"},
-			{"ctrl+a", "select all"},
-			{"ctrl+z", "deselect all"},
+			{"ctrl+a/z", "select/deselect all"},
 			{"/", "filter"},
 			{"esc", "exit filtering"},
 			{"b/pgup", "page up"},
-			{"f/child", "page down"},
+			{"f/space", "page down"},
 			{"g/home", "go to start"},
 			{"G/end", "go to end"},
 			{"?", "hide help"},

@@ -65,7 +65,7 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		switch msg.String() {
 
 		case "esc":
-			return m, extendChildMsg{child: home, focus: true}.cmd
+			return m, extensionChildSwitchMsg{child: home, focus: true}.cmd
 
 		case "backspace":
 			currentFocus = local
@@ -73,7 +73,7 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 
 		}
 
-	case extendChildMsg:
+	case extensionChildSwitchMsg:
 		if msg.child != m.activeChild {
 			m.prevActiveChild = m.activeChild
 			m.activeChild = msg.child
@@ -94,9 +94,9 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 	case preferenceInactiveMsg:
 		if m.prevFocus != extension {
 			currentFocus = m.prevFocus
-			return m, tea.Batch(spaceFocusSwitchCmd, extendChildMsg{child: m.prevActiveChild, focus: false}.cmd)
+			return m, tea.Batch(spaceFocusSwitchCmd, extensionChildSwitchMsg{child: m.prevActiveChild, focus: false}.cmd)
 		}
-		return m, extendChildMsg{child: m.prevActiveChild, focus: true}.cmd
+		return m, extensionChildSwitchMsg{child: m.prevActiveChild, focus: true}.cmd
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {

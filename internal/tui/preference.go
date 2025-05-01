@@ -26,11 +26,13 @@ const (
 type preferenceSection int
 
 const (
-	share preferenceSection = iota
+	personal preferenceSection = iota
+	share
 	receive
 )
 
 var prefSecNames = []string{
+	"Personal",
 	"Sharing",
 	"Receiving",
 }
@@ -45,13 +47,15 @@ func (ps preferenceSection) string() string {
 type preferenceKey int
 
 const (
-	zipFiles preferenceKey = iota
+	username preferenceKey = iota
+	zipFiles
 	isolateFiles
 	sharedZipName
 	downloadFolder
 )
 
 var prefKeyNames = []string{
+	"USERNAME",
 	"ZIP FILES?",
 	"ISOLATE FILES?",
 	"SHARED ZIP NAME",
@@ -88,7 +92,6 @@ type preferenceModel struct {
 	txtInput       textinput.Model
 	preferenceQues []preferenceQue
 	// used to check unsaved state
-	config                                      *client.Config
 	titleStyle                                  lipgloss.Style
 	cursor                                      int
 	showHelp, disableKeymap, active, insertMode bool
@@ -118,13 +121,12 @@ func initialPreferenceModel() preferenceModel {
 
 	return preferenceModel{
 		preferenceQues: ques,
-		config:         &cfg,
 		vp:             vp,
 		txtInput:       txtInput,
 	}
 }
 
-func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+func (m preferenceModel) capturesKeyEvent(_ tea.KeyMsg) bool {
 	return m.active
 }
 
@@ -216,11 +218,10 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 	case spaceFocusSwitchMsg:
 		m.updateTitleStyleAsFocus(currentFocus == extension)
 
-	case extendChildMsg:
+	case extensionChildSwitchMsg:
 		m.active = msg.child == preference
 
 	case preferencesSavedMsg:
-		m.updateConfig()
 		if msg {
 			return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 		}
@@ -497,16 +498,19 @@ func (m preferenceModel) resetInsertMode() {
 }
 
 func (m *preferenceModel) resetToSavedState() {
+	cfg, _ := client.GetConfig() // initialPreferenceModel loaded the config -> err ignored
 	for i, q := range m.preferenceQues {
 		switch q.title {
+		case username:
+			m.preferenceQues[i].input = cfg.Personal.Username
 		case zipFiles:
-			m.preferenceQues[i].check = m.config.Share.ZipFiles
+			m.preferenceQues[i].check = cfg.Share.ZipFiles
 		case isolateFiles:
-			m.preferenceQues[i].check = m.config.Share.IsolateFiles
+			m.preferenceQues[i].check = cfg.Share.IsolateFiles
 		case sharedZipName:
-			m.preferenceQues[i].input = m.config.Share.SharedZipName
+			m.preferenceQues[i].input = cfg.Share.SharedZipName
 		case downloadFolder:
-			m.preferenceQues[i].input = m.config.Receive.DownloadFolder
+			m.preferenceQues[i].input = cfg.Receive.DownloadFolder
 		}
 	}
 }
@@ -521,6 +525,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 	cfg := client.Config{}
 	for _, q := range m.preferenceQues {
 		switch q.title {
+		case username:
+			cfg.Personal.Username = q.input
 		case zipFiles:
 			cfg.Share.ZipFiles = q.check
 		case isolateFiles:
@@ -544,20 +550,23 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 
 func (m preferenceModel) isUnsavedState() bool {
 	var unsaved bool
+	cfg, _ := client.GetConfig() // initialPreferenceModel loaded the config -> err ignored
 	for _, q := range m.preferenceQues {
 		// early return so we don't loop for other titles
 		if unsaved {
 			return unsaved
 		}
 		switch q.title {
+		case username:
+			unsaved = q.input != cfg.Personal.Username
 		case zipFiles:
-			unsaved = q.check != m.config.Share.ZipFiles
+			unsaved = q.check != cfg.Share.ZipFiles
 		case isolateFiles:
-			unsaved = q.check != m.config.Share.IsolateFiles
+			unsaved = q.check != cfg.Share.IsolateFiles
 		case sharedZipName:
-			unsaved = q.input != m.config.Share.SharedZipName
+			unsaved = q.input != cfg.Share.SharedZipName
 		case downloadFolder:
-			unsaved = q.input != m.config.Receive.DownloadFolder
+			unsaved = q.input != cfg.Receive.DownloadFolder
 		}
 	}
 	return unsaved
@@ -579,23 +588,16 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc, nil)
 }
 
-func (m *preferenceModel) updateConfig() {
-	for _, q := range m.preferenceQues {
-		switch q.title {
-		case zipFiles:
-			m.config.Share.ZipFiles = q.check
-		case isolateFiles:
-			m.config.Share.IsolateFiles = q.check
-		case sharedZipName:
-			m.config.Share.SharedZipName = q.input
-		case downloadFolder:
-			m.config.Receive.DownloadFolder = q.input
-		}
-	}
-}
-
 func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 	return []preferenceQue{
+		{
+			title:  username,
+			desc:   "Your display name visible to other users on the local network.",
+			prompt: "Name: ",
+			pType:  input,
+			pSec:   personal,
+			input:  cfg.Personal.Username,
+		},
 		{
 			title: zipFiles,
 			desc:  "Share selected files as a single zip.",
@@ -605,7 +607,7 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 		},
 		{
 			title: isolateFiles,
-			desc:  "Copy selected files to a separate directory before share.",
+			desc:  "Copy selected files to a separate directory before sharing.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.IsolateFiles,
@@ -619,7 +621,6 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 			input:  cfg.Share.SharedZipName,
 		},
 		{
-			//title:  "DOWNLOAD FOLDER?",
 			title:  downloadFolder,
 			desc:   "Absolute path to a folder where files will be downloaded.",
 			prompt: "Path: ",

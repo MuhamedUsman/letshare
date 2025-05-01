@@ -7,12 +7,21 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const (
 	appConfDir  = ".letshare"
 	appConfFile = "config.toml"
 )
+
+var (
+	ErrNoConfig = errors.New("config must be loaded")
+)
+
+type PersonalConfig struct {
+	Username string `toml:"username"`
+}
 
 type ShareConfig struct {
 	ZipFiles      bool   `toml:"zip_files"`
@@ -25,10 +34,28 @@ type ReceiveConfig struct {
 }
 
 type Config struct {
-	Share   ShareConfig   `toml:"share"`
-	Receive ReceiveConfig `toml:"receive"`
+	Personal PersonalConfig `toml:"personal"`
+	Share    ShareConfig    `toml:"share"`
+	Receive  ReceiveConfig  `toml:"receive"`
 }
 
+var (
+	mu     sync.Mutex
+	config *Config
+)
+
+// GetConfig returns the lastest loaded/saved user's config,
+// if it returns ErrNoConfig, LoadConfig OR SaveConfig must be called.
+func GetConfig() (Config, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if config != nil {
+		return *config, nil
+	}
+	return Config{}, ErrNoConfig
+}
+
+// LoadConfig loads the configuration from the user's config file.
 func LoadConfig() (Config, error) {
 	f, err := getUserConfigFile()
 	if err != nil {
@@ -53,9 +80,20 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	defer f.Close()
-	return readConfig(f)
+
+	cfg, err := readConfig(f)
+	if err != nil {
+		return Config{}, err
+	}
+	// update config
+	mu.Lock()
+	defer mu.Unlock()
+	config = &cfg
+
+	return cfg, nil
 }
 
+// SaveConfig saves the configuration to the user's config file.
 func SaveConfig(c Config) error {
 	f, err := createConfigFile()
 	if err != nil {
@@ -65,6 +103,11 @@ func SaveConfig(c Config) error {
 	if err = writeConfig(f, c); err != nil {
 		return fmt.Errorf("writing new config to file: %w", err)
 	}
+	// update config
+	mu.Lock()
+	defer mu.Unlock()
+	config = &c
+
 	return nil
 }
 
@@ -73,9 +116,16 @@ func defaultConfig() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("user home directory look-up: %w", err)
 	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return Config{}, fmt.Errorf("hostname look-up: %w", err)
+	}
 	downPath := filepath.Join(homeDir, "Downloads")
 	downPath = filepath.ToSlash(downPath)
 	cfg := Config{
+		Personal: PersonalConfig{
+			Username: hostname,
+		},
 		Share: ShareConfig{
 			ZipFiles:      false,
 			IsolateFiles:  false,
