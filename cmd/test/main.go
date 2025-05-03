@@ -6,6 +6,7 @@ import (
 	"github.com/lmittmann/tint"
 	"log/slog"
 	"os"
+	"time"
 )
 
 func init() {
@@ -14,27 +15,40 @@ func init() {
 }
 
 func main() {
-	root := "D:\\BSCS Spring 2022\\1st Semester"
-	files := []string{"Applied Physics", "Math", "Complete Numericals.pdf"}
+	root := "D:\\BSCS Spring 2022"
+	dirs := []string{"1st Semester", "2nd Semester", "3rd Semester", "4th Semester", "5th Semester", "6th Semester", "7th Semester"}
+	progCh := make(chan uint64)
 
-	progress := make(chan int64, 5)
-	isTotal := true
-	var total int64
 	go func() {
-		for p := range progress {
-			if isTotal {
-				total = p
-				isTotal = false
+		isFirst := true
+		var total uint64
+		for i := range progCh {
+			if isFirst {
+				total = i
+				isFirst = false
 			} else {
-				fmt.Printf("\rWritten: %s/ Total: %s", file.HumanizeSize(p), file.HumanizeSize(total))
+				fmt.Printf("\rProgress: %s/%s ", file.HumanizeSize(i), file.HumanizeSize(total))
 			}
 		}
+		fmt.Println()
 	}()
 
-	path, err := file.Zip(progress, "1stSemester.zip", root, files...)
+	zipper := file.NewZipper(progCh)
+	tNow := time.Now()
+	archive, err := zipper.ZipArchives(os.TempDir(), root, dirs...)
 	if err != nil {
 		slog.Error(err.Error())
-	} else {
-		slog.Info("Zipping completed successfully", "path", path)
+		return
 	}
+	tAfter := time.Since(tNow)
+	zipper.Close()
+
+	slog.Info("Time taken to zip directories: ", "sec", tAfter.Seconds())
+	for _, a := range archive {
+		slog.Info("Zipped directory: ", "dir", a)
+		_ = os.Remove(a)
+	}
+	/*if err = os.Remove(archive); err != nil {
+		slog.Error("Error removing archive: ", "err", err)
+	}*/
 }

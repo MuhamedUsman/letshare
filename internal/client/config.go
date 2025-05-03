@@ -25,7 +25,6 @@ type PersonalConfig struct {
 
 type ShareConfig struct {
 	ZipFiles      bool   `toml:"zip_files"`
-	IsolateFiles  bool   `toml:"isolate_files"`
 	SharedZipName string `toml:"shared_zip_name"`
 }
 
@@ -128,7 +127,6 @@ func defaultConfig() (Config, error) {
 		},
 		Share: ShareConfig{
 			ZipFiles:      false,
-			IsolateFiles:  false,
 			SharedZipName: "shared.zip",
 		},
 		Receive: ReceiveConfig{

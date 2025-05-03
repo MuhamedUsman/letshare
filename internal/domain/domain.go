@@ -1,13 +1,20 @@
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 type FileInfo struct {
 	// last modified time
-	ModTime   time.Time `json:"modTime,omitempty,omitzero"`
-	Name      string    `json:"name,omitempty"`
-	Path      string    `json:"path,omitempty"`
-	Extension string    `json:"extension,omitempty"` // MIME type, if not resolved then extension
+	ModTime  time.Time `json:"modTime,omitempty,omitzero"`
+	AccessID string    `json:"accessId"`
+	Name     string    `json:"name,omitempty"`
+	Path     string    `json:"-"`
+	Type     string    `json:"type,omitempty"`
 	// file size in bytes
 	Size int64 `json:"size,omitempty"`
+}
+
+func PopulateFileInfo(filepath string, size int64) FileInfo {
+	return FileInfo{}
 }

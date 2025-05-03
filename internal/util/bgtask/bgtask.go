@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	once sync.Once
-	bt   *BackgroundTask
+	oneBt sync.Once
+	bt    *BackgroundTask
 )
 
 // BackgroundTask manages a collection of goroutines with a shared lifecycle.
@@ -26,7 +26,7 @@ type BackgroundTask struct {
 // It creates the instance on the first call and returns the same instance on subsequent calls.
 func New() *BackgroundTask {
 	ctx, cancel := context.WithCancel(context.Background())
-	once.Do(func() {
+	oneBt.Do(func() {
 		bt = &BackgroundTask{
 			wg:     &sync.WaitGroup{},
 			ctx:    ctx,

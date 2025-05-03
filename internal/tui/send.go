@@ -1,6 +1,10 @@
 package tui
 
 import (
+	"errors"
+	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/file"
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -13,6 +17,7 @@ type selections struct {
 }
 type sendModel struct {
 	selections    *selections
+	progress      progress.Model
 	titleStyle    lipgloss.Style
 	disableKeymap bool
 }
@@ -78,4 +83,21 @@ func (m *sendModel) handleUpdate(msg tea.Msg) tea.Cmd {
 
 func (m *sendModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
+}
+
+func (m sendModel) processFiles(msg processSelectionsMsg) tea.Cmd {
+	cfg, err := client.GetConfig()
+	if errors.Is(err, client.ErrNoConfig) {
+		cfg, err = client.LoadConfig()
+	}
+	return func() tea.Msg {
+		if err != nil {
+			return errMsg{err: err, fatal: true}
+		}
+
+		if cfg.Share.ZipFiles {
+			progressChan := make(chan int64)
+			file.zip(progressChan, cfg.Share.SharedZipName, m.selections.rootPath, m.selections.filenames...)
+		}
+	}
 }
