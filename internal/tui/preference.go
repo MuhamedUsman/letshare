@@ -49,7 +49,6 @@ type preferenceKey int
 const (
 	username preferenceKey = iota
 	zipFiles
-	isolateFiles
 	sharedZipName
 	downloadFolder
 )
@@ -57,7 +56,6 @@ const (
 var prefKeyNames = []string{
 	"USERNAME",
 	"ZIP FILES?",
-	"ISOLATE FILES?",
 	"SHARED ZIP NAME",
 	"DOWNLOAD FOLDER",
 }
@@ -505,8 +503,6 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Personal.Username
 		case zipFiles:
 			m.preferenceQues[i].check = cfg.Share.ZipFiles
-		case isolateFiles:
-			m.preferenceQues[i].check = cfg.Share.IsolateFiles
 		case sharedZipName:
 			m.preferenceQues[i].input = cfg.Share.SharedZipName
 		case downloadFolder:
@@ -529,8 +525,6 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 			cfg.Personal.Username = q.input
 		case zipFiles:
 			cfg.Share.ZipFiles = q.check
-		case isolateFiles:
-			cfg.Share.IsolateFiles = q.check
 		case sharedZipName:
 			cfg.Share.SharedZipName = q.input
 		case downloadFolder:
@@ -561,8 +555,6 @@ func (m preferenceModel) isUnsavedState() bool {
 			unsaved = q.input != cfg.Personal.Username
 		case zipFiles:
 			unsaved = q.check != cfg.Share.ZipFiles
-		case isolateFiles:
-			unsaved = q.check != cfg.Share.IsolateFiles
 		case sharedZipName:
 			unsaved = q.input != cfg.Share.SharedZipName
 		case downloadFolder:
@@ -604,13 +596,6 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.ZipFiles,
-		},
-		{
-			title: isolateFiles,
-			desc:  "Copy selected files to a separate directory before sharing.",
-			pType: option,
-			pSec:  share,
-			check: cfg.Share.IsolateFiles,
 		},
 		{
 			title:  sharedZipName,

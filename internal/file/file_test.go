@@ -29,7 +29,7 @@ func TestZip(t *testing.T) {
 		}
 	}()
 
-	archiveZipPath, err := Zip(progressChan, "test.zip", root, files...)
+	archiveZipPath, err := ZipAll(progressChan, "test.writeZip", root, files...)
 	if err != nil {
 		t.Fatal(err)
 	}

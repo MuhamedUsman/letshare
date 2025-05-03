@@ -69,3 +69,7 @@ func preferencesSavedCmd(exit bool) tea.Cmd {
 		return preferencesSavedMsg(exit)
 	}
 }
+
+type progressMsg int64
+
+func (msg progressMsg) cmd() tea.Msg { return msg }
