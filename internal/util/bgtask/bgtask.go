@@ -36,6 +36,12 @@ func New() *BackgroundTask {
 	return bt
 }
 
+// GetCtx returns the context used by the background task.
+// This context will be canceled when shutdown is initiated.
+func (bt *BackgroundTask) GetCtx() context.Context {
+	return bt.ctx
+}
+
 // Run executes the provided function in a goroutine and tracks it.
 // The function receives a context that will be canceled when shutdown is initiated.
 // Automatically handles panics and decrements task count when the goroutine completes.
