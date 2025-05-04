@@ -18,7 +18,7 @@ type compressionAlgo = uint16
 
 const (
 	Store   compressionAlgo = 0 // no compression
-	Deflate compressionAlgo = 8 // DEFLATE compressed
+	Deflate compressionAlgo = 8 // max compression
 )
 
 // Zipr tracks and reports progress of zip operations.
@@ -27,7 +27,8 @@ const (
 // goroutines. It maintains a cumulative count of bytes processed across all
 // read operations and periodically reports progress through the provided channel.
 type Zipr struct {
-	progressCh chan uint64
+	progressCh chan<- uint64
+	logCh      chan<- string
 	read       *atomic.Uint64
 	lrMu       *sync.RWMutex
 	lastRead   time.Time
@@ -40,16 +41,24 @@ type Zipr struct {
 //   - progressCh: A channel that receives progress updates during zip operations.
 //     The first value sent is the total size of all files to be zipped,
 //     and subsequent values report the number of bytes processed so far.
+//     To avoid missing the initial total filesize report, ensure you're
+//     already reading from this channel before calling Zipr.CreateArchive/Zipr.CreateArchives
+//     or make this channel buffered with at least a capacity of 1.
+//   - logCh: A channel that receives paths to the files under progress.
 //   - algo: The compression algorithm to use for the zip operation.
 //     Supported algorithms are defined in the compressionAlgo type.
 //
+// WARNING: All writes to channels are non-blocking.
+//
 // Example:
 //
-//	progressCh := make(chan uint64, 10)
-//	zipper := zipr.New(progressCh, zipr.Deflate) // Using standard DEFLATE compression
-func New(progressCh chan uint64, algo compressionAlgo) *Zipr {
+//	progressCh := make(chan uint64, 1) // Buffered to ensure total size is not missed
+//	logCh := make(chan string) // Buffered/Unbuffered as needed
+//	zipper := zipr.New(progressCh, logCh, zipr.Deflate) // Using standard DEFLATE compression
+func New(progressCh chan<- uint64, logCh chan<- string, algo compressionAlgo) *Zipr {
 	return &Zipr{
 		progressCh: progressCh,
+		logCh:      logCh,
 		read:       new(atomic.Uint64),
 		lrMu:       new(sync.RWMutex),
 		lastRead:   time.Now(),
@@ -92,7 +101,7 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 		return "", fmt.Errorf("retrieving filesize: %w", err)
 	}
 
-	z.progressCh <- uint64(size) // report total size
+	_ = trySend(z.progressCh, uint64(size)) // report total size
 
 	zw := zip.NewWriter(archive)
 	defer func() { _ = zw.Close() }()
@@ -163,7 +172,8 @@ func (z *Zipr) CreateArchives(ctx context.Context, path, root string, dirs ...st
 	if err != nil {
 		return nil, fmt.Errorf("retrieving total size of dirs: %w", err)
 	}
-	z.progressCh <- uint64(size) // report total size
+
+	_ = trySend(z.progressCh, uint64(size)) // report total size
 
 	zippedDirs := make([]string, len(dirs))
 	wp := bgtask.NewWorkerPool(ctx)
@@ -208,9 +218,14 @@ main:
 //
 //	defer zipper.Close()
 func (z *Zipr) Close() {
-	z.progressCh <- z.read.Load()
-	close(z.progressCh)
+	_ = trySend(z.progressCh, z.read.Load())
 	z.read.Store(0)
+	if z.logCh != nil {
+		close(z.logCh)
+	}
+	if z.progressCh != nil {
+		close(z.progressCh)
+	}
 }
 
 // newReader creates a new progressReader that wraps the provided io.Reader.
@@ -267,6 +282,9 @@ func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 		return fmt.Errorf("opening file %q: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
+
+	// report the file we're about to zip
+	_ = trySend(z.logCh, filePath)
 
 	info, err := f.Stat()
 	if err != nil {
@@ -325,10 +343,7 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	isReportTime := time.Since(pr.lastRead) > 500*time.Millisecond
 	pr.lrMu.RUnlock()
 	if isReportTime {
-		select { // non-blocking send
-		case pr.progressCh <- pr.read.Load():
-		default:
-		}
+		_ = trySend(pr.progressCh, pr.read.Load()) // report progress
 		pr.lrMu.Lock()
 		pr.lastRead = time.Now()
 		pr.lrMu.Unlock()
@@ -357,6 +372,15 @@ func checkValidDirs(root string, dirs ...string) error {
 		}
 	}
 	return nil
+}
+
+func trySend[T any](ch chan<- T, v T) bool {
+	select {
+	case ch <- v:
+		return true
+	default:
+		return false
+	}
 }
 
 // calculateSize determines the total size in bytes of all specified files/directories.
