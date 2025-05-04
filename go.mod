@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.8.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/justinas/alice v1.2.0
+	github.com/klauspost/compress v1.18.0
 	github.com/lmittmann/tint v1.0.7
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/sahilm/fuzzy v0.1.1

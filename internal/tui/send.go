@@ -3,7 +3,7 @@ package tui
 import (
 	"errors"
 	"github.com/MuhamedUsman/letshare/internal/client"
-	"github.com/MuhamedUsman/letshare/internal/file"
+	"github.com/MuhamedUsman/letshare/internal/zipr"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -96,8 +96,10 @@ func (m sendModel) processFiles(msg processSelectionsMsg) tea.Cmd {
 		}
 
 		if cfg.Share.ZipFiles {
-			progressChan := make(chan int64)
-			file.zip(progressChan, cfg.Share.SharedZipName, m.selections.rootPath, m.selections.filenames...)
+			progressChan := make(chan uint64)
+			zipr.New(progressChan, zipr.Deflate)
+			//zipr.(progressChan, cfg.Share.SharedZipName, m.selections.rootPath, m.selections.filenames...)
 		}
+		return nil
 	}
 }

@@ -25,6 +25,7 @@ type PersonalConfig struct {
 
 type ShareConfig struct {
 	ZipFiles      bool   `toml:"zip_files"`
+	Compression   bool   `toml:"compression"`
 	SharedZipName string `toml:"shared_zip_name"`
 }
 

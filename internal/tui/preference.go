@@ -49,6 +49,7 @@ type preferenceKey int
 const (
 	username preferenceKey = iota
 	zipFiles
+	compression
 	sharedZipName
 	downloadFolder
 )
@@ -56,6 +57,7 @@ const (
 var prefKeyNames = []string{
 	"USERNAME",
 	"ZIP FILES?",
+	"COMPRESSED ZIP?",
 	"SHARED ZIP NAME",
 	"DOWNLOAD FOLDER",
 }
@@ -503,6 +505,8 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Personal.Username
 		case zipFiles:
 			m.preferenceQues[i].check = cfg.Share.ZipFiles
+		case compression:
+			m.preferenceQues[i].check = cfg.Share.Compression
 		case sharedZipName:
 			m.preferenceQues[i].input = cfg.Share.SharedZipName
 		case downloadFolder:
@@ -525,6 +529,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 			cfg.Personal.Username = q.input
 		case zipFiles:
 			cfg.Share.ZipFiles = q.check
+		case compression:
+			cfg.Share.Compression = q.check
 		case sharedZipName:
 			cfg.Share.SharedZipName = q.input
 		case downloadFolder:
@@ -555,6 +561,8 @@ func (m preferenceModel) isUnsavedState() bool {
 			unsaved = q.input != cfg.Personal.Username
 		case zipFiles:
 			unsaved = q.check != cfg.Share.ZipFiles
+		case compression:
+			unsaved = q.check != cfg.Share.Compression
 		case sharedZipName:
 			unsaved = q.input != cfg.Share.SharedZipName
 		case downloadFolder:
@@ -592,10 +600,17 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 		},
 		{
 			title: zipFiles,
-			desc:  "Share selected files as a single zip.",
+			desc:  "Combine all selected files into a single zip archive. When disabled, each directory will be zipped separately.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.ZipFiles,
+		},
+		{
+			title: compression,
+			desc:  "Compress selected files, no compression will be significantly faster.",
+			pType: option,
+			pSec:  share,
+			check: cfg.Share.Compression,
 		},
 		{
 			title:  sharedZipName,
