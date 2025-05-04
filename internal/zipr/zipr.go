@@ -1,4 +1,4 @@
-package file
+package zipr
 
 import (
 	"archive/zip"
@@ -14,39 +14,50 @@ import (
 	"time"
 )
 
-// Zipper tracks and reports progress of zip operations.
+type compressionAlgo = uint16
+
+const (
+	Store   compressionAlgo = 0 // no compression
+	Deflate compressionAlgo = 8 // DEFLATE compressed
+)
+
+// Zipr tracks and reports progress of zip operations.
 //
-// Zipper is designed to be thread-safe and can be used concurrently from multiple
+// Zipr is designed to be thread-safe and can be used concurrently from multiple
 // goroutines. It maintains a cumulative count of bytes processed across all
 // read operations and periodically reports progress through the provided channel.
-type Zipper struct {
+type Zipr struct {
 	progressCh chan uint64
 	read       *atomic.Uint64
 	lrMu       *sync.RWMutex
 	lastRead   time.Time
+	algo       compressionAlgo
 }
 
-// NewZipper creates a new Zipper instance.
+// New creates a new Zipr instance with the specified compression algorithm.
 //
-// The progressCh parameter is a channel that receives progress updates
-// during the zip operation. The first value sent to the channel will be
-// the total size of all files to be zipped, and subsequent values will
-// be the number of bytes processed so far.
+// Parameters:
+//   - progressCh: A channel that receives progress updates during zip operations.
+//     The first value sent is the total size of all files to be zipped,
+//     and subsequent values report the number of bytes processed so far.
+//   - algo: The compression algorithm to use for the zip operation.
+//     Supported algorithms are defined in the compressionAlgo type.
 //
 // Example:
 //
 //	progressCh := make(chan uint64, 10)
-//	zipper := ziputil.NewZipper(progressCh)
-func NewZipper(progressCh chan uint64) *Zipper {
-	return &Zipper{
+//	zipper := zipr.New(progressCh, zipr.Deflate) // Using standard DEFLATE compression
+func New(progressCh chan uint64, algo compressionAlgo) *Zipr {
+	return &Zipr{
 		progressCh: progressCh,
 		read:       new(atomic.Uint64),
 		lrMu:       new(sync.RWMutex),
 		lastRead:   time.Now(),
+		algo:       algo,
 	}
 }
 
-// ZipArchive creates a zip archive of the specified files/directories.
+// CreateArchive creates a zip archive of the specified files/directories.
 //
 // If no filenames are provided, it creates a zip archive of the entire root directory.
 // The first write to progressChan will be the total size of the archive.
@@ -64,18 +75,18 @@ func NewZipper(progressCh chan uint64) *Zipper {
 // Example:
 //
 //	// Zip an entire directory
-//	path, err := zipper.ZipArchive("/tmp", "backup.zip", "/home/user/documents")
+//	path, err := zipper.CreateArchive("/tmp", "backup.zip", "/home/user/documents")
 //
 //	// Zip specific files within a directory
-//	path, err := zipper.ZipArchive("/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
-func (z *Zipper) ZipArchive(path, archiveName, root string, files ...string) (string, error) {
+//	path, err := zipper.CreateArchive("/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
+func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (string, error) {
 	archivePath := filepath.Join(path, archiveName)
 	archive, err := os.Create(archivePath)
 	if err != nil {
 		return "", fmt.Errorf("creating empty zip archive: %w", err)
 	}
 	defer archive.Close()
-	size, err := CalculateSize(root, files...)
+	size, err := calculateSize(root, files...)
 	if err != nil {
 		return "", fmt.Errorf("retrieving filesize: %w", err)
 	}
@@ -110,7 +121,7 @@ func (z *Zipper) ZipArchive(path, archiveName, root string, files ...string) (st
 	return archivePath, nil
 }
 
-// ZipArchives concurrently creates zip archives for multiple directories.
+// CreateArchives concurrently creates zip archives for multiple directories.
 //
 // This method creates a separate zip file for each directory specified in the dirs parameter.
 // All zipping operations run concurrently using a worker pool for maximum efficiency.
@@ -127,18 +138,18 @@ func (z *Zipper) ZipArchive(path, archiveName, root string, files ...string) (st
 // Example:
 //
 //	// Zip multiple directories concurrently
-//	paths, err := zipper.ZipArchives("/tmp", "/home/user", "documents", "pictures", "music")
+//	paths, err := zipper.CreateArchives("/tmp", "/home/user", "documents", "pictures", "music")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	for _, path := range paths {
 //	    fmt.Println("Created archive:", path)
 //	}
-func (z *Zipper) ZipArchives(path, root string, dirs ...string) ([]string, error) {
+func (z *Zipr) CreateArchives(path, root string, dirs ...string) ([]string, error) {
 	if err := checkValidDirs(root, dirs...); err != nil {
 		return nil, err
 	}
-	size, err := CalculateSize(root, dirs...)
+	size, err := calculateSize(root, dirs...)
 	if err != nil {
 		return nil, fmt.Errorf("retrieving total size of dirs: %w", err)
 	}
@@ -160,7 +171,7 @@ main:
 				dirToZip := filepath.Join(root, dir)
 				archiveName := dir + ".zip"
 				var archivePath string
-				if archivePath, err = z.ZipArchive(path, archiveName, dirToZip); err != nil {
+				if archivePath, err = z.CreateArchive(path, archiveName, dirToZip); err != nil {
 					return err
 				}
 				zippedDirs[i] = archivePath
@@ -186,7 +197,7 @@ main:
 // Example:
 //
 //	defer zipper.Close()
-func (z *Zipper) Close() {
+func (z *Zipr) Close() {
 	z.progressCh <- z.read.Load()
 	close(z.progressCh)
 	z.read.Store(0)
@@ -196,16 +207,16 @@ func (z *Zipper) Close() {
 //
 // This is an internal method used to create reader instances that track
 // progress during file operations.
-func (z *Zipper) newReader(base io.Reader) io.Reader {
+func (z *Zipr) newReader(base io.Reader) io.Reader {
 	return &progressReader{
-		r:      base,
-		Zipper: z,
+		r:    base,
+		Zipr: z,
 	}
 }
 
 // writeDir zips the contents of a directory into the zip archive.
 //
-// This is an internal method used by ZipArchive to recursively process directories.
+// This is an internal method used by CreateArchive to recursively process directories.
 //
 // Parameters:
 //   - w: The zip writer to write to
@@ -214,7 +225,7 @@ func (z *Zipper) newReader(base io.Reader) io.Reader {
 //
 // Returns:
 //   - An error if the operation fails
-func (z *Zipper) writeDir(w *zip.Writer, root, dirPath string) error {
+func (z *Zipr) writeDir(w *zip.Writer, root, dirPath string) error {
 	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -225,7 +236,7 @@ func (z *Zipper) writeDir(w *zip.Writer, root, dirPath string) error {
 
 // writeFile adds a single file to the zip archive.
 //
-// This is an internal method used by both ZipArchive and writeDir to add files to the archive.
+// This is an internal method used by both CreateArchive and writeDir to add files to the archive.
 // It maintains the directory structure relative to the root directory.
 //
 // Parameters:
@@ -235,7 +246,7 @@ func (z *Zipper) writeDir(w *zip.Writer, root, dirPath string) error {
 //
 // Returns:
 //   - An error if the operation fails
-func (z *Zipper) writeFile(w *zip.Writer, basePath, filePath string) error {
+func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("opening file %q: %w", filePath, err)
@@ -259,7 +270,7 @@ func (z *Zipper) writeFile(w *zip.Writer, basePath, filePath string) error {
 		return fmt.Errorf("determining relative path for fileheader name: %w", err)
 	}
 	fh.Name = relativeName
-	fh.Method = zip.Deflate
+	fh.Method = z.algo
 
 	var ioW io.Writer
 	if ioW, err = w.CreateHeader(fh); err != nil {
@@ -277,11 +288,11 @@ func (z *Zipper) writeFile(w *zip.Writer, basePath, filePath string) error {
 // progressReader implements io.Reader and tracks read progress.
 //
 // progressReader wraps an underlying io.Reader and counts bytes read,
-// sending progress updates through the parent Zipper's progress channel
+// sending progress updates through the parent Zipr's progress channel
 // at regular intervals.
 type progressReader struct {
-	r       io.Reader // Underlying reader
-	*Zipper           // Embedded Zipper for progress tracking
+	r     io.Reader // Underlying reader
+	*Zipr           // Embedded Zipr for progress tracking
 }
 
 // Read implements io.Reader interface for progressReader.
@@ -312,7 +323,7 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 
 // checkValidDirs verifies that all specified paths are valid directories.
 //
-// This is an internal utility function used by ZipArchives to validate input directories.
+// This is an internal utility function used by CreateArchives to validate input directories.
 //
 // Parameters:
 //   - root: The base path containing the directories
@@ -331,4 +342,51 @@ func checkValidDirs(root string, dirs ...string) error {
 		}
 	}
 	return nil
+}
+
+// calculateSize determines the total size in bytes of all specified files/directories.
+// If no filenames are provided, it calculates the size of the entire parent directory.
+func calculateSize(parentDir string, filenames ...string) (int64, error) {
+	if len(filenames) == 0 {
+		size, err := calculateDirSize(parentDir)
+		return size, err
+	}
+	size := int64(0)
+	for _, name := range filenames {
+		path := filepath.Join(parentDir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			return 0, fmt.Errorf("reading filestat for %q: %w", path, err)
+		}
+		if !info.IsDir() {
+			size += info.Size()
+			continue
+		}
+		dirSize, err := calculateDirSize(path)
+		if err != nil {
+			return 0, fmt.Errorf("calculating dir size for %q: %w", path, err)
+		}
+		size += dirSize
+	}
+	return size, nil
+}
+
+// calculateDirSize recursively determines the total size of all files within a directory.
+func calculateDirSize(path string) (int64, error) {
+	size := int64(0)
+	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			var info fs.FileInfo
+			info, err = d.Info()
+			if err != nil {
+				return err
+			}
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
 }

@@ -3,8 +3,8 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/file"
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
+	"github.com/MuhamedUsman/letshare/internal/util/file"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -345,7 +345,7 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 				name = entry.Name()
 				filetype = ""
 			}
-			size := file.HumanizeSize(eInfo.Size())
+			size := file.HumanizeSize(uint64(eInfo.Size()))
 
 			if entry.IsDir() {
 				name = entry.Name()

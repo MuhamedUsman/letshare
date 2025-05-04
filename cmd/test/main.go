@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/file"
+	"github.com/MuhamedUsman/letshare/internal/util/file"
+	"github.com/MuhamedUsman/letshare/internal/zipr"
 	"github.com/lmittmann/tint"
 	"log/slog"
 	"os"
@@ -33,9 +34,9 @@ func main() {
 		fmt.Println()
 	}()
 
-	zipper := file.NewZipper(progCh)
+	zipper := zipr.New(progCh, zipr.Deflate)
 	tNow := time.Now()
-	archive, err := zipper.ZipArchives(os.TempDir(), root, dirs...)
+	archive, err := zipper.CreateArchive(os.TempDir(), "Letshare.zip", root, dirs...)
 	if err != nil {
 		slog.Error(err.Error())
 		return
@@ -44,11 +45,8 @@ func main() {
 	zipper.Close()
 
 	slog.Info("Time taken to zip directories: ", "sec", tAfter.Seconds())
-	for _, a := range archive {
-		slog.Info("Zipped directory: ", "dir", a)
+	/*for _, a := range archive {
 		_ = os.Remove(a)
-	}
-	/*if err = os.Remove(archive); err != nil {
-		slog.Error("Error removing archive: ", "err", err)
 	}*/
+	_ = os.Remove(archive)
 }
