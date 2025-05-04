@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/util/file"
 	"github.com/MuhamedUsman/letshare/internal/zipr"
@@ -36,7 +37,7 @@ func main() {
 
 	zipper := zipr.New(progCh, zipr.Deflate)
 	tNow := time.Now()
-	archive, err := zipper.CreateArchive(os.TempDir(), "Letshare.zip", root, dirs...)
+	archive, err := zipper.CreateArchive(context.Background(), os.TempDir(), "Letshare.zip", root, dirs...)
 	if err != nil {
 		slog.Error(err.Error())
 		return
