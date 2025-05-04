@@ -63,6 +63,7 @@ func New(progressCh chan uint64, algo compressionAlgo) *Zipr {
 // The first write to progressChan will be the total size of the archive.
 //
 // Parameters:
+//   - ctx: Context for cancelling the operation - if cancelled, any partially created archive will be deleted
 //   - path: The directory where the zip archive will be created
 //   - archiveName: The name of the zip archive to create (should include .zip extension)
 //   - root: The path to the root directory to zip
@@ -79,7 +80,7 @@ func New(progressCh chan uint64, algo compressionAlgo) *Zipr {
 //
 //	// Zip specific files within a directory
 //	path, err := zipper.CreateArchive("/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
-func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (string, error) {
+func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string, files ...string) (string, error) {
 	archivePath := filepath.Join(path, archiveName)
 	archive, err := os.Create(archivePath)
 	if err != nil {
@@ -98,7 +99,7 @@ func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (s
 
 	// zip the whole dir if no files are specified
 	if len(files) == 0 {
-		if err = z.writeDir(zw, root, root); err != nil {
+		if err = z.writeDir(nil, zw, root, root); err != nil {
 			return "", fmt.Errorf("zipping whole dir %q: %w", root, err)
 		}
 	} else { // zip the specified files
@@ -109,11 +110,19 @@ func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (s
 				return "", fmt.Errorf("statting file %q: %w", file, err)
 			}
 			if stat.IsDir() {
-				err = z.writeDir(zw, root, filePath)
+				err = z.writeDir(ctx, zw, root, filePath)
 			} else {
-				err = z.writeFile(zw, root, filePath)
+				// once a file write is happening, we cannot cancel
+				// so check for ctx.Done() before writing
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				default:
+					err = z.writeFile(zw, root, filePath)
+				}
 			}
 			if err != nil {
+				_ = os.Remove(archivePath) // ignore errors
 				return "", fmt.Errorf("zipping %q: %w", filePath, err)
 			}
 		}
@@ -127,6 +136,7 @@ func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (s
 // All zipping operations run concurrently using a worker pool for maximum efficiency.
 //
 // Parameters:
+//   - ctx: Context for cancelling the operation - if cancelled, any partially created archive will be deleted
 //   - path: The directory where the zip archives will be created
 //   - root: The base path containing the directories to be zipped
 //   - dirs: List of directory names within the root to zip (each becomes a separate archive)
@@ -145,7 +155,7 @@ func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (s
 //	for _, path := range paths {
 //	    fmt.Println("Created archive:", path)
 //	}
-func (z *Zipr) CreateArchives(path, root string, dirs ...string) ([]string, error) {
+func (z *Zipr) CreateArchives(ctx context.Context, path, root string, dirs ...string) ([]string, error) {
 	if err := checkValidDirs(root, dirs...); err != nil {
 		return nil, err
 	}
@@ -156,7 +166,7 @@ func (z *Zipr) CreateArchives(path, root string, dirs ...string) ([]string, erro
 	z.progressCh <- uint64(size) // report total size
 
 	zippedDirs := make([]string, len(dirs))
-	wp := bgtask.NewWorkerPool(context.TODO())
+	wp := bgtask.NewWorkerPool(ctx)
 
 main:
 	for i, dir := range dirs {
@@ -171,7 +181,7 @@ main:
 				dirToZip := filepath.Join(root, dir)
 				archiveName := dir + ".zip"
 				var archivePath string
-				if archivePath, err = z.CreateArchive(path, archiveName, dirToZip); err != nil {
+				if archivePath, err = z.CreateArchive(ctx, path, archiveName, dirToZip); err != nil {
 					return err
 				}
 				zippedDirs[i] = archivePath
@@ -225,12 +235,17 @@ func (z *Zipr) newReader(base io.Reader) io.Reader {
 //
 // Returns:
 //   - An error if the operation fails
-func (z *Zipr) writeDir(w *zip.Writer, root, dirPath string) error {
+func (z *Zipr) writeDir(ctx context.Context, w *zip.Writer, root, dirPath string) error {
 	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err != nil || d.IsDir() {
+				return err
+			}
+			return z.writeFile(w, root, path)
 		}
-		return z.writeFile(w, root, path)
 	})
 }
 
