@@ -22,9 +22,9 @@ type BackgroundTask struct {
 	Tasks  int
 }
 
-// New returns a singleton BackgroundTask instance.
+// Get returns a singleton BackgroundTask instance.
 // It creates the instance on the first call and returns the same instance on subsequent calls.
-func New() *BackgroundTask {
+func Get() *BackgroundTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	oneBt.Do(func() {
 		bt = &BackgroundTask{
@@ -36,9 +36,9 @@ func New() *BackgroundTask {
 	return bt
 }
 
-// GetCtx returns the context used by the background task.
+// Ctx returns the context used by the background task.
 // This context will be canceled when shutdown is initiated.
-func (bt *BackgroundTask) GetCtx() context.Context {
+func (bt *BackgroundTask) Ctx() context.Context {
 	return bt.ctx
 }
 
