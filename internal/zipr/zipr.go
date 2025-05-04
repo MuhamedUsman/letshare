@@ -76,17 +76,17 @@ func New(progressCh chan uint64, algo compressionAlgo) *Zipr {
 // Example:
 //
 //	// Zip an entire directory
-//	path, err := zipper.CreateArchive("/tmp", "backup.zip", "/home/user/documents")
+//	path, err := zipper.CreateArchive(context.Background(), "/tmp", "backup.zip", "/home/user/documents")
 //
 //	// Zip specific files within a directory
-//	path, err := zipper.CreateArchive("/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
+//	path, err := zipper.CreateArchive(context.Background() ,"/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
 func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string, files ...string) (string, error) {
 	archivePath := filepath.Join(path, archiveName)
 	archive, err := os.Create(archivePath)
 	if err != nil {
 		return "", fmt.Errorf("creating empty zip archive: %w", err)
 	}
-	defer archive.Close()
+	defer func() { _ = archive.Close() }()
 	size, err := calculateSize(root, files...)
 	if err != nil {
 		return "", fmt.Errorf("retrieving filesize: %w", err)
@@ -95,7 +95,7 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 	z.progressCh <- uint64(size) // report total size
 
 	zw := zip.NewWriter(archive)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	// zip the whole dir if no files are specified
 	if len(files) == 0 {
@@ -148,7 +148,7 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 // Example:
 //
 //	// Zip multiple directories concurrently
-//	paths, err := zipper.CreateArchives("/tmp", "/home/user", "documents", "pictures", "music")
+//	paths, err := zipper.CreateArchives(context.Background(), "/tmp", "/home/user", "documents", "pictures", "music")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -266,7 +266,7 @@ func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 	if err != nil {
 		return fmt.Errorf("opening file %q: %w", filePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
