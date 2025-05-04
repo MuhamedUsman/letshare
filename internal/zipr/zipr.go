@@ -54,7 +54,8 @@ type Zipr struct {
 //
 //	progressCh := make(chan uint64, 1) // Buffered to ensure total size is not missed
 //	logCh := make(chan string) // Buffered/Unbuffered as needed
-//	zipper := zipr.New(progressCh, logCh, zipr.Deflate) // Using standard DEFLATE compression
+//	zipper := zipr.Get(progressCh, logCh, zipr.Deflate) // Using DEFLATE compression
+//	noReportZipper := zipr.Get(nil, nil, zipr.Store) // No progress reporting
 func New(progressCh chan<- uint64, logCh chan<- string, algo compressionAlgo) *Zipr {
 	return &Zipr{
 		progressCh: progressCh,
@@ -109,14 +110,14 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 	// zip the whole dir if no files are specified
 	if len(files) == 0 {
 		if err = z.writeDir(nil, zw, root, root); err != nil {
-			return "", fmt.Errorf("zipping whole dir %q: %w", root, err)
+			return "", fmt.Errorf("zipping whole dir: %w", err)
 		}
 	} else { // zip the specified files
 		for _, file := range files {
 			filePath := filepath.Join(root, file)
 			var stat fs.FileInfo
 			if stat, err = os.Stat(filePath); err != nil {
-				return "", fmt.Errorf("statting file %q: %w", file, err)
+				return "", fmt.Errorf("statting file: %w", err)
 			}
 			if stat.IsDir() {
 				err = z.writeDir(ctx, zw, root, filePath)
@@ -279,7 +280,7 @@ func (z *Zipr) writeDir(ctx context.Context, w *zip.Writer, root, dirPath string
 func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("opening file %q: %w", filePath, err)
+		return fmt.Errorf("opening file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -291,7 +292,7 @@ func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 		return fmt.Errorf("statting file: %w", err)
 	}
 	if info.IsDir() {
-		panic("filePath is a directory, dev needs a coffee!")
+		return fmt.Errorf("%q is a directory", filePath)
 	}
 
 	fh, err := zip.FileInfoHeader(info)
@@ -365,7 +366,7 @@ func checkValidDirs(root string, dirs ...string) error {
 	for _, dir := range dirs {
 		info, err := os.Lstat(filepath.Join(root, dir))
 		if err != nil {
-			return fmt.Errorf("statting dir %q: %w", dir, err)
+			return fmt.Errorf("statting dir: %w", err)
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("path %q is not a directory", dir)
@@ -395,7 +396,7 @@ func calculateSize(parentDir string, filenames ...string) (int64, error) {
 		path := filepath.Join(parentDir, name)
 		info, err := os.Stat(path)
 		if err != nil {
-			return 0, fmt.Errorf("reading filestat for %q: %w", path, err)
+			return 0, fmt.Errorf("reading filestat: %w", err)
 		}
 		if !info.IsDir() {
 			size += info.Size()
@@ -403,7 +404,7 @@ func calculateSize(parentDir string, filenames ...string) (int64, error) {
 		}
 		dirSize, err := calculateDirSize(path)
 		if err != nil {
-			return 0, fmt.Errorf("calculating dir size for %q: %w", path, err)
+			return 0, fmt.Errorf("calculating dir size: %w", err)
 		}
 		size += dirSize
 	}
