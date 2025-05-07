@@ -22,11 +22,19 @@ func initialLocalSpaceModel() localSpaceModel {
 	return localSpaceModel{
 		dirNavigation: initialDirNavModel(),
 		send:          initialSendModel(),
+		activeChild:   send,
 	}
 }
 
 func (m localSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	return m.dirNavigation.capturesKeyEvent(msg)
+	switch m.activeChild {
+	case dirNav:
+		return m.dirNavigation.capturesKeyEvent(msg)
+	case send:
+		return m.send.capturesKeyEvent(msg)
+	default:
+		return false
+	}
 }
 
 func (m localSpaceModel) Init() tea.Cmd {
@@ -37,6 +45,9 @@ func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
+		if m.disableKeymap {
+			return m, nil
+		}
 		if m.capturesKeyEvent(msg) {
 			// some child will capture the key event, let them handle it
 			return m, m.handleChildModelUpdate(msg)

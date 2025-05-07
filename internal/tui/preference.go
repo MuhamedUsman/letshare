@@ -584,7 +584,6 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 		m.resetToSavedState()
 		return m.inactivePreference()
 	}
-
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc, nil)
 }
 

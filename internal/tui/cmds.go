@@ -9,7 +9,7 @@ type errMsg struct {
 	// display if fatal is set to false
 	errStr string
 	// flag to signal log the err to stderr and exit
-	// if true, no need to read errStr, as it may be zero valued
+	// if true, no need to processed errStr, as it may be zero valued
 	fatal bool
 }
 
@@ -70,6 +70,9 @@ func preferencesSavedCmd(exit bool) tea.Cmd {
 	}
 }
 
-type progressMsg int64
+type progressMsg uint64
+type logMsg string
 
-func (msg progressMsg) cmd() tea.Msg { return msg }
+type zippingErr error
+
+type zippingDoneMsg []string

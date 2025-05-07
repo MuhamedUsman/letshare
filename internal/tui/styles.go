@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 var ( // color scheme from https://github.com/morhetz/gruvbox
@@ -15,12 +16,32 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 	yellowColor           = lipgloss.AdaptiveColor{Light: "#b57614", Dark: "#fabd2f"}
 	blueColor             = lipgloss.AdaptiveColor{Light: "#076678", Dark: "#458588"}
 	purpleColor           = lipgloss.AdaptiveColor{Light: "#8f3f71", Dark: "#b16286"}
-	highlightColor        = lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#ECFD65"}
-	midHighlightColor     = lipgloss.AdaptiveColor{Light: "#49D8A1", Dark: "#9DA947"}
-	subduedHighlightColor = lipgloss.AdaptiveColor{Light: "#8EFBCD", Dark: "#4e562a"}
+	highlightColor        = lipgloss.AdaptiveColor{Light: "#4e562a", Dark: "#ECFD65"}
+	midHighlightColor     = lipgloss.AdaptiveColor{Light: "#9DA947", Dark: "#9DA947"}
+	subduedHighlightColor = lipgloss.AdaptiveColor{Light: "#ECFD65", Dark: "#4e562a"}
 	grayColor             = lipgloss.AdaptiveColor{Light: "#7c6f64", Dark: "#928374"}
 	subduedGrayColor      = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#444444"}
 	orangeColor           = lipgloss.AdaptiveColor{Light: "#af3a03", Dark: "#d65d0e"}
+
+	generateGradient = func(base, target lipgloss.AdaptiveColor, steps int) []lipgloss.AdaptiveColor {
+		bLight, _ := colorful.Hex(base.Light)
+		bDark, _ := colorful.Hex(base.Dark)
+		tLight, _ := colorful.Hex(target.Light)
+		tDark, _ := colorful.Hex(target.Dark)
+		gradient := make([]lipgloss.AdaptiveColor, steps)
+
+		// Generate the gradient colors
+		for i := range steps {
+			factor := float64(i) / float64(steps)
+			lighter := bLight.BlendLuv(tLight, factor)
+			darker := bDark.BlendLuv(tDark, factor)
+			gradient[i] = lipgloss.AdaptiveColor{
+				Light: lighter.Hex(),
+				Dark:  darker.Hex(),
+			}
+		}
+		return gradient
+	}
 )
 
 var ( // Container width calculations
@@ -37,13 +58,13 @@ var ( // Container width calculations
 
 	smallContainerW = func() int {
 		w := (workableW() * 25) / 100
-		w = w - smallContainerStyle.GetHorizontalFrameSize()
+		w -= smallContainerStyle.GetHorizontalFrameSize()
 		return max(0, w)
 	}
 
 	largeContainerW = func() int {
 		w := workableW() - smallContainerW()*2
-		w = w - largeContainerStyle.GetHorizontalFrameSize()
+		w -= largeContainerStyle.GetHorizontalFrameSize()
 		return max(0, w)
 	}
 
@@ -73,6 +94,10 @@ var ( // mainModel Styles
 )
 
 var ( // dirNavModel Styles
+
+)
+
+var ( // sendModel Styles
 
 )
 

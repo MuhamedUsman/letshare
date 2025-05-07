@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/tui/table"
-	"github.com/MuhamedUsman/letshare/internal/util/file"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table" // lipTable -> lipglossTable
+	"github.com/dustin/go-humanize"
 	"github.com/mattn/go-runewidth"
 	"github.com/sahilm/fuzzy"
 	"io/fs"
@@ -20,7 +20,12 @@ import (
 	"unicode/utf8"
 )
 
-type filterState = int
+const (
+	nae = "---" // Not an Extension
+	dir = "dir"
+)
+
+type filterState int
 
 const (
 	unfiltered = iota
@@ -327,7 +332,7 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 			}
 			return errMsg{
 				err:    fmt.Errorf("reading directory %q: %v", path, err),
-				errStr: "Unable to read directory contents",
+				errStr: "Unable to processed directory contents",
 			}.cmd
 		}
 
@@ -345,11 +350,11 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 				name = entry.Name()
 				filetype = ""
 			}
-			size := file.HumanizeSize(uint64(eInfo.Size()))
+			size := humanize.Bytes(uint64(eInfo.Size()))
 
 			if entry.IsDir() {
 				name = entry.Name()
-				filetype = "dir"
+				filetype = dir
 				size = "–––"
 				dc.dirs++
 			} else {
@@ -357,7 +362,7 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 			}
 
 			if filetype == "" {
-				filetype = "–––"
+				filetype = nae
 			}
 			dc.contents[i] = dirContent{
 				name: name,
@@ -496,14 +501,19 @@ func (m extDirNavModel) getSelectionCount() int {
 func (m extDirNavModel) selectedFilenames() (filenames []string, dirs, files int) {
 	filenames = make([]string, 0, len(m.dirContents.contents))
 	for _, c := range m.dirContents.contents {
-		filenames = append(filenames, c.name)
-		if c.selection {
-			if c.ext == "dir" {
-				dirs++
-			} else {
-				files++
-			}
+		if !c.selection {
+			continue
 		}
+		filename := c.name
+		if c.ext == dir {
+			dirs++
+		} else {
+			if c.ext != nae {
+				filename += "." + c.ext
+			}
+			files++
+		}
+		filenames = append(filenames, filename)
 	}
 	return
 }

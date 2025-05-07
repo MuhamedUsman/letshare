@@ -11,6 +11,7 @@ import (
 )
 
 // ConfigureSlog so that it easy to locate the source file & line as the Goland IDE picks up the relative file path.
+// TODO: Remove that when you're done
 func ConfigureSlog(writeTo io.Writer) {
 	wd, err := os.Getwd()
 	var tintHandler slog.Handler

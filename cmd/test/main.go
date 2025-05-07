@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/util/file"
 	"github.com/MuhamedUsman/letshare/internal/zipr"
+	"github.com/dustin/go-humanize"
 	"github.com/lmittmann/tint"
 	"log/slog"
 	"os"
@@ -19,23 +19,39 @@ func init() {
 func main() {
 	root := "D:\\BSCS Spring 2022"
 	dirs := []string{"1st Semester", "2nd Semester", "3rd Semester", "4th Semester", "5th Semester", "6th Semester", "7th Semester"}
+
 	progCh := make(chan uint64)
+	logCh := make(chan string)
 
 	go func() {
 		isFirst := true
 		var total uint64
-		for i := range progCh {
-			if isFirst {
-				total = i
-				isFirst = false
-			} else {
-				fmt.Printf("\rProgress: %s/%s ", file.HumanizeSize(i), file.HumanizeSize(total))
+	main:
+		for {
+			select {
+			case log, ok := <-logCh:
+				if !ok {
+					break main
+				}
+				fmt.Printf("\rZipping %s", log)
+			case i, ok := <-progCh:
+				if !ok {
+					break main
+				}
+				if isFirst {
+					total = i
+					isFirst = false
+				} else {
+					fmt.Printf("\rProgress: %s/%s ", humanize.Bytes(i), humanize.Bytes(total))
+				}
 			}
 		}
 		fmt.Println()
 	}()
 
-	zipper := zipr.New(progCh, zipr.Deflate)
+	progCh = nil
+
+	zipper := zipr.New(progCh, logCh, zipr.Store)
 	tNow := time.Now()
 	archive, err := zipper.CreateArchive(context.Background(), os.TempDir(), "Letshare.zip", root, dirs...)
 	if err != nil {
