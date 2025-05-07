@@ -2,10 +2,12 @@ package tui
 
 import (
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
+	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"log/slog"
 	"os"
+	"time"
 )
 
 type focusSpace int
@@ -58,9 +60,6 @@ func InitialMainModel() MainModel {
 }
 
 func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	if msg.String() == "ctrl+c" {
-		return false
-	}
 	switch currentFocus {
 	case local:
 		return m.localSpace.capturesKeyEvent(msg)
@@ -117,6 +116,10 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, spaceFocusSwitchCmd
 
 		case "ctrl+c":
+			bgTask := bgtask.Get()
+			if err := bgTask.Shutdown(5 * time.Second); err != nil {
+				slog.Error("failed to shutdown background task", "tasks", bgTask.Tasks, "error", err)
+			}
 			return m, tea.Quit
 		}
 

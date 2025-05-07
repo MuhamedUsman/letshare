@@ -12,12 +12,12 @@ import "fmt"
 func HumanizeSize(bytes uint64) string {
 	kb := float64(bytes) / 1024
 	if kb < 1024 {
-		return fmt.Sprintf("%.2fKB", kb)
+		return fmt.Sprintf("%.1fKB", kb)
 	}
 	mb := kb / 1024
 	if mb < 1024 {
-		return fmt.Sprintf("%.2fMB", mb)
+		return fmt.Sprintf("%.1fMB", mb)
 	}
 	gb := mb / 1024
-	return fmt.Sprintf("%.2fGB", gb)
+	return fmt.Sprintf("%.1fGB", gb)
 }

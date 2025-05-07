@@ -40,7 +40,7 @@ type Server struct {
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		BT:            bgtask.New(),
+		BT:            bgtask.Get(),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),

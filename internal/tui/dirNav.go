@@ -393,7 +393,7 @@ func (dirNavModel) readDir(dir string, action dirAction) tea.Cmd {
 			}
 			return errMsg{
 				err:    fmt.Errorf("reading directory %q: %v", dir, err),
-				errStr: "Unable to read directory contents",
+				errStr: "Unable to processed directory contents",
 			}.cmd
 		}
 		dirEntries := make([]string, 0)

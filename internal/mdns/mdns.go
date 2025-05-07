@@ -38,7 +38,7 @@ type MDNS struct {
 func New() *MDNS {
 	once.Do(func() {
 		mdns = &MDNS{
-			bt:      bgtask.New(),
+			bt:      bgtask.Get(),
 			entries: make(ServiceEntry),
 		}
 	})

@@ -109,7 +109,9 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 
 	// zip the whole dir if no files are specified
 	if len(files) == 0 {
-		if err = z.writeDir(nil, zw, root, root); err != nil {
+		if err = z.writeDir(ctx, zw, root, root); err != nil {
+			_ = archive.Close()
+			_ = os.Remove(archivePath) // delete partial written archive, ignore errors
 			return "", fmt.Errorf("zipping whole dir: %w", err)
 		}
 	} else { // zip the specified files
@@ -126,13 +128,14 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 				// so check for ctx.Done() before writing
 				select {
 				case <-ctx.Done():
-					return "", ctx.Err()
+					err = ctx.Err()
 				default:
 					err = z.writeFile(zw, root, filePath)
 				}
 			}
 			if err != nil {
-				_ = os.Remove(archivePath) // ignore errors
+				_ = archive.Close()
+				_ = os.Remove(archivePath) // delete partial written archive, ignore errors
 				return "", fmt.Errorf("zipping %q: %w", filePath, err)
 			}
 		}
@@ -184,7 +187,7 @@ main:
 		select {
 		case <-wp.Ctx.Done(): // do the cleanup
 			for _, zd := range zippedDirs {
-				_ = os.Remove(zd) // ignore any error
+				_ = os.Remove(zd) // delete partial written archive, ignore errors
 			}
 			break main
 		default:
@@ -217,8 +220,8 @@ main:
 //
 // Example:
 //
-//	defer zipper.Close()
-func (z *Zipr) Close() {
+//	defer func() { _ = zipper.Close() }()
+func (z *Zipr) Close() error {
 	_ = trySend(z.progressCh, z.read.Load())
 	z.read.Store(0)
 	if z.logCh != nil {
@@ -227,6 +230,7 @@ func (z *Zipr) Close() {
 	if z.progressCh != nil {
 		close(z.progressCh)
 	}
+	return nil
 }
 
 // newReader creates a new progressReader that wraps the provided io.Reader.

@@ -36,9 +36,9 @@ func Get() *BackgroundTask {
 	return bt
 }
 
-// Ctx returns the context used by the background task.
+// ShutdownCtx returns the context used by the background task.
 // This context will be canceled when shutdown is initiated.
-func (bt *BackgroundTask) Ctx() context.Context {
+func (bt *BackgroundTask) ShutdownCtx() context.Context {
 	return bt.ctx
 }
 
