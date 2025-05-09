@@ -22,7 +22,7 @@ func initialLocalSpaceModel() localSpaceModel {
 	return localSpaceModel{
 		dirNavigation: initialDirNavModel(),
 		send:          initialSendModel(),
-		activeChild:   send,
+		activeChild:   dirNav,
 	}
 }
 
