@@ -15,6 +15,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -38,18 +39,18 @@ type zipTracker struct {
 	processed          uint64
 	processedInPrevSec uint64
 	processedPerSec    uint64
+	viewableLogs       int
 	isTotalSize        bool
-	destroyed          bool
+	done               bool
 }
 
 func newZipTracker(p <-chan uint64, l <-chan string) *zipTracker {
 	ctx, cancel := context.WithCancel(context.Background())
-	h := max(0, workableH()-14)
 	return &zipTracker{
 		ctx:         ctx,
 		cancel:      cancel,
 		isTotalSize: true,
-		logs:        make([]string, h),
+		logs:        make([]string, 0),
 		progressCh:  p,
 		logCh:       l,
 	}
@@ -70,31 +71,34 @@ func (z *zipTracker) updateProgress(c uint64) {
 		z.start = time.Now()
 		z.totalSize = c
 		z.isTotalSize = false
+	} else {
+		z.timeTaken = now.Sub(z.start)
+		z.processed = c
 	}
-
-	z.timeTaken = now.Sub(z.start)
-	z.processed = c
 }
 
 func (z *zipTracker) appendLog(l string) {
-	lastIdx := max(0, len(z.logs)-1)
-	copy(z.logs[:lastIdx], z.logs[1:])
-	z.logs[lastIdx] = l
+	if len(z.logs) == 0 {
+		return
+	}
+	copy(z.logs[1:], z.logs[:len(z.logs)-1])
+	z.logs[0] = l
 }
 
 func (z *zipTracker) setLogsLength(l int) {
-	l = max(1, l)
+	z.viewableLogs = max(0, l)
+	if l <= len(z.logs) {
+		return // no need to undersize
+	}
 	newLogs := make([]string, l)
-	copyAt := max(0, len(newLogs)-len(z.logs))
-	copy(newLogs[copyAt:], z.logs)
+	copy(newLogs, z.logs)
 	z.logs = newLogs
 }
 
-func (z *zipTracker) destroy() {
+func (z *zipTracker) markDone() {
 	z.cancel()
-	z.ctx, z.cancel, z.logs, z.progressCh, z.logCh, z.logCh = nil, nil, nil, nil, nil, nil
-	z.totalSize, z.processed = 0, 0
-	z.destroyed = true
+	z.ctx, z.cancel, z.progressCh, z.logCh, z.logCh = nil, nil, nil, nil, nil
+	z.done = true
 }
 
 type sendModel struct {
@@ -110,7 +114,7 @@ type sendModel struct {
 func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "ctrl+c":
-		return !m.zipTracker.destroyed
+		return !m.zipTracker.done
 	case "left", "right", "h", "l", "tab", "shift+tab":
 		return m.isActive
 	default:
@@ -121,7 +125,6 @@ func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 func initialSendModel() sendModel {
 	p := progress.New(
 		progress.WithGradient(subduedHighlightColor.Dark, highlightColor.Dark),
-		progress.WithSpringOptions(5, 1),
 		progress.WithoutPercentage(),
 	)
 	return sendModel{
@@ -191,6 +194,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		progCh := make(chan uint64, 1)
 		logCh := make(chan string, 10)
 		m.zipTracker = newZipTracker(progCh, logCh)
+		m.updateDimensions() // update the logs length
 
 		return m, tea.Batch(
 			m.trackProgress(),
@@ -210,10 +214,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		return m, m.trackLogs()
 
 	case zippingDoneMsg:
-		//m.zipTracker.destroy()
+		m.zipTracker.markDone()
+		m.updateDimensions()
 
 	case zippingErr:
-		//m.zipTracker.destroy()
+		//m.zipTracker.markDone()
 		log.Println(msg.Error())
 
 	}
@@ -222,15 +227,19 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 }
 
 func (m sendModel) View() string {
-	v := lipgloss.JoinVertical(
-		lipgloss.Top,
+	var v string
+	components := []string{
 		m.renderTitle(),
 		m.renderStatusBar(),
 		m.renderLogs(),
 		m.renderProgress(),
-		m.renderBtns(),
-		customSendHelpTable(m.showHelp).Width(smallContainerW()-2).Render(),
-	)
+		customSendHelpTable(m.showHelp).Width(smallContainerW() - 2).Render(),
+	}
+	if m.zipTracker.done {
+		components = slices.Insert(components, 4, m.renderBtns())
+		m.updateDimensions()
+	}
+	v = lipgloss.JoinVertical(lipgloss.Top, components...)
 	return smallContainerStyle.Width(smallContainerW()).Render(v)
 }
 
@@ -247,7 +256,11 @@ func (m *sendModel) updateKeymap(disable bool) {
 func (m *sendModel) updateDimensions() {
 	m.progress.Width = smallContainerW() - 2
 	helpH := lipgloss.Height(customSendHelpTable(m.showHelp).String())
-	m.zipTracker.setLogsLength(max(0, workableH()-13-helpH))
+	subH := 12 + helpH
+	if m.zipTracker.done {
+		subH += 1
+	}
+	m.zipTracker.setLogsLength(max(0, workableH()-subH))
 }
 
 func (m sendModel) renderTitle() string {
@@ -259,8 +272,8 @@ func (m sendModel) renderTitle() string {
 func (m sendModel) renderStatusBar() string {
 	processedPerSec := humanize.Bytes(m.zipTracker.processedPerSec)
 	s := fmt.Sprintf("Processsing at %s/s", processedPerSec)
-	if m.zipTracker.processed == m.zipTracker.totalSize {
-		s = fmt.Sprintf("Processed in %s", m.zipTracker.timeTaken.Round(time.Minute))
+	if m.zipTracker.done {
+		s = fmt.Sprintf("Processed in %s", m.zipTracker.timeTaken.Round(time.Second))
 	}
 	style := lipgloss.NewStyle().
 		Foreground(highlightColor).
@@ -273,7 +286,7 @@ func (m sendModel) renderStatusBar() string {
 
 func (m sendModel) renderLogs() string {
 	t := "Zipping Files"
-	t = runewidth.Truncate(t, smallContainerW()-1, "…")
+	t = runewidth.Truncate(t, smallContainerW()-titleStyle.GetHorizontalFrameSize()-2, "…")
 	t = titleStyle.Background(subduedHighlightColor).
 		Width(smallContainerW() - titleStyle.GetHorizontalFrameSize()).
 		MarginTop(1).
@@ -281,16 +294,21 @@ func (m sendModel) renderLogs() string {
 		UnsetItalic().
 		Render(t)
 
-	logs := make([]string, len(m.zipTracker.logs))
-	gradient := generateGradient(subduedHighlightColor, highlightColor, len(m.zipTracker.logs))
-	for i, l := range m.zipTracker.logs {
+	logs := make([]string, m.zipTracker.viewableLogs)
+	gradient := generateGradient(subduedHighlightColor, highlightColor, m.zipTracker.viewableLogs)
+
+	for i := range logs {
+		vi := m.zipTracker.viewableLogs - 1 - i // viewable logs are reversed
+		l := m.zipTracker.logs[vi]
 		l = runewidth.Truncate(l, smallContainerW()-2, "…")
-		logs[i] = lipgloss.NewStyle().Foreground(gradient[i]).Render(l)
+		logs[i] = lipgloss.NewStyle().Foreground(gradient[i]).Italic(true).Render(l)
 	}
+
 	l := lipgloss.NewStyle().
 		Padding(1, 0).
 		Width(smallContainerW()).
 		Render(strings.Join(logs, "\n"))
+
 	return lipgloss.JoinVertical(lipgloss.Top, t, l)
 }
 
