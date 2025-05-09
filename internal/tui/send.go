@@ -78,9 +78,6 @@ func (z *zipTracker) updateProgress(c uint64) {
 }
 
 func (z *zipTracker) appendLog(l string) {
-	if len(z.logs) == 0 {
-		return
-	}
 	copy(z.logs[1:], z.logs[:len(z.logs)-1])
 	z.logs[0] = l
 }
@@ -231,12 +228,13 @@ func (m sendModel) View() string {
 	components := []string{
 		m.renderTitle(),
 		m.renderStatusBar(),
+		m.renderLogsTitle(),
 		m.renderLogs(),
 		m.renderProgress(),
 		customSendHelpTable(m.showHelp).Width(smallContainerW() - 2).Render(),
 	}
 	if m.zipTracker.done {
-		components = slices.Insert(components, 4, m.renderBtns())
+		components = slices.Insert(components, 5, m.renderBtns())
 		m.updateDimensions()
 	}
 	v = lipgloss.JoinVertical(lipgloss.Top, components...)
@@ -254,11 +252,18 @@ func (m *sendModel) updateKeymap(disable bool) {
 }
 
 func (m *sendModel) updateDimensions() {
-	m.progress.Width = smallContainerW() - 2
-	helpH := lipgloss.Height(customSendHelpTable(m.showHelp).String())
-	subH := 12 + helpH
+	m.progress.Width = smallContainerW() - smallContainerStyle.GetHorizontalFrameSize()
+	subH := smallContainerStyle.GetVerticalFrameSize() + zipLogsContainerStyle.GetVerticalFrameSize()
+	components := []string{
+		m.renderTitle(),
+		m.renderStatusBar(),
+		m.renderLogsTitle(),
+		m.renderProgress(),
+		customSendHelpTable(m.showHelp).String(),
+	}
+	subH += lipgloss.Height(strings.Join(components, "\n"))
 	if m.zipTracker.done {
-		subH += 1
+		subH += lipgloss.Height(m.renderBtns())
 	}
 	m.zipTracker.setLogsLength(max(0, workableH()-subH))
 }
@@ -284,16 +289,18 @@ func (m sendModel) renderStatusBar() string {
 	return style.Render(s)
 }
 
-func (m sendModel) renderLogs() string {
+func (m sendModel) renderLogsTitle() string {
 	t := "Zipping Files"
 	t = runewidth.Truncate(t, smallContainerW()-titleStyle.GetHorizontalFrameSize()-2, "…")
-	t = titleStyle.Background(subduedHighlightColor).
+	return titleStyle.Background(subduedHighlightColor).
 		Width(smallContainerW() - titleStyle.GetHorizontalFrameSize()).
 		MarginTop(1).
 		Align(lipgloss.Center).
 		UnsetItalic().
 		Render(t)
+}
 
+func (m sendModel) renderLogs() string {
 	logs := make([]string, m.zipTracker.viewableLogs)
 	gradient := generateGradient(subduedHighlightColor, highlightColor, m.zipTracker.viewableLogs)
 
@@ -304,12 +311,9 @@ func (m sendModel) renderLogs() string {
 		logs[i] = lipgloss.NewStyle().Foreground(gradient[i]).Italic(true).Render(l)
 	}
 
-	l := lipgloss.NewStyle().
-		Padding(1, 0).
+	return zipLogsContainerStyle.
 		Width(smallContainerW()).
 		Render(strings.Join(logs, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Top, t, l)
 }
 
 func (m sendModel) renderProgress() string {
@@ -391,7 +395,6 @@ func (m *sendModel) processFiles(progCh chan<- uint64, logCh chan<- string, msg 
 
 		if cfg.Share.ZipFiles {
 			var archive string
-			s := time.Now()
 			archive, err = zipper.CreateArchive(
 				m.zipTracker.ctx, // will be canceled on shutdown
 				os.TempDir(),
@@ -400,9 +403,6 @@ func (m *sendModel) processFiles(progCh chan<- uint64, logCh chan<- string, msg 
 				msg.filenames...,
 			)
 			archives = []string{archive}
-			timeTaken := time.Since(s)
-			log.Println("time taken to create archive", "sec", timeTaken.Seconds())
-
 		} else {
 			archives, err = zipDirsAndCollectWithFiles(
 				m.zipTracker.ctx,
@@ -497,7 +497,6 @@ func customSendHelpTable(show bool) *table.Table {
 	}
 	return table.New().
 		Border(lipgloss.HiddenBorder()).
-		BorderBottom(false).
 		Wrap(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch col {

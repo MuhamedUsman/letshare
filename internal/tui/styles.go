@@ -98,7 +98,8 @@ var ( // dirNavModel Styles
 )
 
 var ( // sendModel Styles
-
+	zipLogsContainerStyle = lipgloss.NewStyle().
+		Padding(1, 0)
 )
 
 var ( // extensionSpaceModel Styles
