@@ -566,7 +566,6 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 	body := fmt.Sprintf(`Selected “%s%s%s” will be processed as per preferences. To change preferences, press “esc” & “ctrl+p”.`,
 		dirStr, space, fileStr)
 	yupFunc := func() tea.Cmd {
-		m.resetSelections()
 		return processSelectionsMsg{
 			parentPath: m.dirPath,
 			filenames:  filenames,
