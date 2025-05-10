@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/zipr"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -193,10 +194,18 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.zipTracker = newZipTracker(progCh, logCh)
 		m.updateDimensions() // update the logs length
 
+		cfg, err := client.GetConfig()
+		if errors.Is(err, client.ErrNoConfig) {
+			cfg, err = client.LoadConfig()
+		}
+		if err != nil {
+			return m, errMsg{err: err, fatal: true}.cmd
+		}
+
 		return m, tea.Batch(
 			m.trackProgress(),
 			m.trackLogs(),
-			m.processFiles(progCh, logCh, msg),
+			m.processFiles(cfg, progCh, logCh, msg),
 			localChildSwitchMsg{child: send, focus: true}.cmd,
 		)
 
@@ -374,14 +383,12 @@ func (m sendModel) renderBtns() string {
 	return lipgloss.JoinHorizontal(lipgloss.Center, btn1, btn2)
 }
 
-func (m *sendModel) processFiles(progCh chan<- uint64, logCh chan<- string, msg processSelectionsMsg) tea.Cmd {
-	cfg, err := client.GetConfig()
-	if errors.Is(err, client.ErrNoConfig) {
-		cfg, err = client.LoadConfig()
-	}
-	if err != nil {
-		return errMsg{err: err, fatal: true}.cmd
-	}
+func (m *sendModel) processFiles(
+	cfg client.Config,
+	progCh chan<- uint64,
+	logCh chan<- string,
+	msg processSelectionsMsg,
+) tea.Cmd {
 
 	var archives []string
 	algo := zipr.Store
@@ -392,25 +399,29 @@ func (m *sendModel) processFiles(progCh chan<- uint64, logCh chan<- string, msg 
 	return func() tea.Msg {
 		zipper := zipr.New(progCh, logCh, algo)
 		defer func() { _ = zipper.Close() }()
+		var err error
 
-		if cfg.Share.ZipFiles {
-			var archive string
-			archive, err = zipper.CreateArchive(
-				m.zipTracker.ctx, // will be canceled on shutdown
-				os.TempDir(),
-				cfg.Share.SharedZipName,
-				msg.parentPath,
-				msg.filenames...,
-			)
-			archives = []string{archive}
-		} else {
-			archives, err = zipDirsAndCollectWithFiles(
-				m.zipTracker.ctx,
-				zipper,
-				msg.parentPath,
-				msg.filenames...,
-			)
-		}
+		bgtask.Get().RunAndBlock(func(shutdownCtx context.Context) {
+			if cfg.Share.ZipFiles {
+				var archive string
+				archive, err = zipper.CreateArchive(
+					shutdownCtx, // will be canceled on shutdown
+					os.TempDir(),
+					cfg.Share.SharedZipName,
+					msg.parentPath,
+					msg.filenames...,
+				)
+				archives = []string{archive}
+			} else {
+				archives, err = zipDirsAndCollectWithFiles(
+					shutdownCtx,
+					zipper,
+					msg.parentPath,
+					msg.filenames...,
+				)
+			}
+		})
+
 		if err != nil {
 			return zippingErr(err)
 		}

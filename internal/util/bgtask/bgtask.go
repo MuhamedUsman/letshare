@@ -60,6 +60,19 @@ func (bt *BackgroundTask) Run(fn func(shutdownCtx context.Context)) {
 	}()
 }
 
+func (bt *BackgroundTask) RunAndBlock(fn func(shutdownCtx context.Context)) {
+	bt.wg.Add(1)
+	bt.Tasks++
+	defer func() {
+		bt.wg.Done()
+		bt.Tasks--
+		if r := recover(); r != nil {
+			slog.Error(fmt.Errorf("%v", r).Error())
+		}
+	}()
+	fn(bt.ctx)
+}
+
 // Shutdown cancels all running tasks and waits for them to complete.
 // Returns nil if all tasks complete before the timeout, otherwise returns an error.
 // timeout: maximum duration to wait for all tasks to complete.
