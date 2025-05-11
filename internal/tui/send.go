@@ -27,6 +27,15 @@ type selections struct {
 	dirs, files int
 }
 
+type zippingState int
+
+const (
+	processing zippingState = iota
+	canceling
+	canceled
+	done
+)
+
 type zipTracker struct {
 	ctx                context.Context
 	cancel             context.CancelFunc
@@ -42,11 +51,11 @@ type zipTracker struct {
 	processedPerSec    uint64
 	viewableLogs       int
 	isTotalSize        bool
-	done               bool
+	state              zippingState
 }
 
-func newZipTracker(p <-chan uint64, l <-chan string) *zipTracker {
-	ctx, cancel := context.WithCancel(context.Background())
+func newZipTracker(parentCtx context.Context, p <-chan uint64, l <-chan string) *zipTracker {
+	ctx, cancel := context.WithCancel(parentCtx)
 	return &zipTracker{
 		ctx:         ctx,
 		cancel:      cancel,
@@ -96,7 +105,7 @@ func (z *zipTracker) setLogsLength(l int) {
 func (z *zipTracker) markDone() {
 	z.cancel()
 	z.ctx, z.cancel, z.progressCh, z.logCh, z.logCh = nil, nil, nil, nil, nil
-	z.done = true
+	z.state = done
 }
 
 type sendModel struct {
@@ -112,7 +121,7 @@ type sendModel struct {
 func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "ctrl+c":
-		return !m.zipTracker.done
+		return m.zipTracker.state != done
 	case "left", "right", "h", "l", "tab", "shift+tab":
 		return m.isActive
 	default:
@@ -189,9 +198,10 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			files:     msg.files,
 		}
 
+		shutdownCtx := bgtask.Get().ShutdownCtx()
 		progCh := make(chan uint64, 1)
 		logCh := make(chan string, 10)
-		m.zipTracker = newZipTracker(progCh, logCh)
+		m.zipTracker = newZipTracker(shutdownCtx, progCh, logCh)
 		m.updateDimensions() // update the logs length
 
 		cfg, err := client.GetConfig()
@@ -242,7 +252,7 @@ func (m sendModel) View() string {
 		m.renderProgress(),
 		customSendHelpTable(m.showHelp).Width(smallContainerW() - 2).Render(),
 	}
-	if m.zipTracker.done {
+	if m.zipTracker.state == done || m.zipTracker.state == canceled {
 		components = slices.Insert(components, 5, m.renderBtns())
 		m.updateDimensions()
 	}
@@ -271,7 +281,7 @@ func (m *sendModel) updateDimensions() {
 		customSendHelpTable(m.showHelp).String(),
 	}
 	subH += lipgloss.Height(strings.Join(components, "\n"))
-	if m.zipTracker.done {
+	if m.zipTracker.state == done || m.zipTracker.state == canceled {
 		subH += lipgloss.Height(m.renderBtns())
 	}
 	m.zipTracker.setLogsLength(max(0, workableH()-subH))
@@ -286,7 +296,13 @@ func (m sendModel) renderTitle() string {
 func (m sendModel) renderStatusBar() string {
 	processedPerSec := humanize.Bytes(m.zipTracker.processedPerSec)
 	s := fmt.Sprintf("Processsing at %s/s", processedPerSec)
-	if m.zipTracker.done {
+	if m.zipTracker.state == canceling {
+		s = "Canceling, may take a while!"
+	}
+	if m.zipTracker.state == canceled {
+		s = "Processing Canceled!"
+	}
+	if m.zipTracker.state == done {
 		s = fmt.Sprintf("Processed in %s", m.zipTracker.timeTaken.Round(time.Second))
 	}
 	style := lipgloss.NewStyle().
@@ -312,12 +328,17 @@ func (m sendModel) renderLogsTitle() string {
 func (m sendModel) renderLogs() string {
 	logs := make([]string, m.zipTracker.viewableLogs)
 	gradient := generateGradient(subduedHighlightColor, highlightColor, m.zipTracker.viewableLogs)
+	logStyle := lipgloss.NewStyle().Italic(true)
 
 	for i := range logs {
+		logStyle = logStyle.Foreground(gradient[i])
 		vi := m.zipTracker.viewableLogs - 1 - i // viewable logs are reversed
 		l := m.zipTracker.logs[vi]
 		l = runewidth.Truncate(l, smallContainerW()-2, "…")
-		logs[i] = lipgloss.NewStyle().Foreground(gradient[i]).Italic(true).Render(l)
+		if m.zipTracker.state == canceled {
+			logStyle = logStyle.Strikethrough(true)
+		}
+		logs[i] = logStyle.Render(l)
 	}
 
 	return zipLogsContainerStyle.
@@ -338,6 +359,9 @@ func (m sendModel) renderProgress() string {
 		Width(smallContainerW()).Wrap(false).
 		StyleFunc(func(_, c int) lipgloss.Style {
 			baseStyle := lipgloss.NewStyle().Foreground(highlightColor)
+			if m.zipTracker.state == canceled {
+				baseStyle = baseStyle.Strikethrough(true)
+			}
 			switch c {
 			case 0:
 				return baseStyle.Align(lipgloss.Left)
@@ -366,6 +390,10 @@ func (m sendModel) renderBtns() string {
 	activeStyle := inactiveStyle.
 		Background(highlightColor).
 		Foreground(subduedHighlightColor)
+
+	if m.zipTracker.state == canceled {
+		return activeStyle.Width(smallContainerW() - 2).Render(btn2)
+	}
 
 	mr := 1
 	if smallContainerW()%2 == 0 { // is odd
@@ -401,11 +429,11 @@ func (m *sendModel) processFiles(
 		defer func() { _ = zipper.Close() }()
 		var err error
 
-		bgtask.Get().RunAndBlock(func(shutdownCtx context.Context) {
+		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			if cfg.Share.ZipFiles {
 				var archive string
 				archive, err = zipper.CreateArchive(
-					shutdownCtx, // will be canceled on shutdown
+					m.zipTracker.ctx, // will be canceled on shutdown
 					os.TempDir(),
 					cfg.Share.SharedZipName,
 					msg.parentPath,
@@ -414,13 +442,19 @@ func (m *sendModel) processFiles(
 				archives = []string{archive}
 			} else {
 				archives, err = zipDirsAndCollectWithFiles(
-					shutdownCtx,
+					m.zipTracker.ctx,
 					zipper,
 					msg.parentPath,
 					msg.filenames...,
 				)
 			}
 		})
+
+		// if the zipping is canceled, we need to wait for the cancellation to finish
+		if m.zipTracker.state == canceling {
+			<-m.zipTracker.ctx.Done()
+			m.zipTracker.state = canceled
+		}
 
 		if err != nil {
 			return zippingErr(err)
@@ -447,13 +481,14 @@ func (m sendModel) trackLogs() tea.Cmd {
 	}
 }
 
-func (m sendModel) confirmStopZipping() tea.Cmd {
+func (m *sendModel) confirmStopZipping() tea.Cmd {
 	selBtn := yup
 	header := "STOP ZIPPING?"
 	body := "Do you want to stop zipping the files, progress will be lost."
 	yupFunc := func() tea.Cmd {
+		m.zipTracker.state = canceling
 		m.zipTracker.cancel()
-		return tea.Quit
+		return nil
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
