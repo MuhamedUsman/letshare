@@ -71,8 +71,15 @@ func preferencesSavedCmd(exit bool) tea.Cmd {
 }
 
 type progressMsg uint64
+
 type logMsg string
 
-type zippingErr error
-
 type zippingDoneMsg []string
+
+type zippingErrMsg error
+
+type zippingCanceledMsg struct{}
+
+type rerenderPreferencesMsg struct{}
+
+func rerenderPreferencesCmd() tea.Msg { return rerenderPreferencesMsg{} }

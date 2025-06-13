@@ -29,8 +29,8 @@ const (
 type Zipr struct {
 	progressCh chan<- uint64
 	logCh      chan<- string
-	read       *atomic.Uint64
-	lrMu       *sync.RWMutex
+	read       atomic.Uint64
+	lrMu       sync.RWMutex // lrMu caps lastRead to avoid race conditions
 	lastRead   time.Time
 	algo       compressionAlgo
 }
@@ -60,8 +60,6 @@ func New(progressCh chan<- uint64, logCh chan<- string, algo compressionAlgo) *Z
 	return &Zipr{
 		progressCh: progressCh,
 		logCh:      logCh,
-		read:       new(atomic.Uint64),
-		lrMu:       new(sync.RWMutex),
 		lastRead:   time.Now(),
 		algo:       algo,
 	}

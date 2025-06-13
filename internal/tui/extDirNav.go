@@ -104,7 +104,8 @@ func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	}
 	switch msg.String() {
 	case "enter", "ctrl+s":
-		return m.filterState == filtering || (m.isValidTableShortcut() && m.filterState != filtering)
+		return m.filterState == filtering ||
+			(m.isValidTableShortcut() && m.filterState != filtering && m.getSelectionCount() > 0)
 	case "up", "down", "?", "ctrl+a", "ctrl+z":
 		return true
 	case "/", "shift+up", "ctrl+up", "shift+down", "ctrl+down":
@@ -174,7 +175,7 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 			m.selectAll(false)
 
 		case "ctrl+s":
-			if m.filterState != filtering {
+			if m.filterState != filtering && m.getSelectionCount() > 0 {
 				return m, m.confirmSend()
 			}
 
@@ -566,12 +567,14 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 	body := fmt.Sprintf(`Selected “%s%s%s” will be processed as per preferences. To change preferences, press “esc” & “ctrl+p”.`,
 		dirStr, space, fileStr)
 	yupFunc := func() tea.Cmd {
-		return processSelectionsMsg{
+		m.resetSelections()
+		cmd := processSelectionsMsg{
 			parentPath: m.dirPath,
 			filenames:  filenames,
 			dirs:       dirs,
 			files:      files,
 		}.cmd
+		return tea.Batch(cmd, extensionChildSwitchMsg{home, false}.cmd)
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
 }
@@ -593,15 +596,14 @@ func customExtDirTableHelp(show bool) *lipTable.Table {
 		rows = [][]string{
 			{"shift+↓/ctrl+↓", "make selection"},
 			{"shift+↑/ctrl+↑", "undo selection"},
-			{"enter", "select/deselect at cursor"},
-			{"enter (when filtering)", "apply filter"},
 			{"ctrl+a/z", "select/deselect all"},
-			{"/", "filter"},
+			{"enter", "select/deselect at cursor"},
 			{"esc", "exit filtering"},
 			{"b/pgup", "page up"},
 			{"f/space", "page down"},
 			{"g/home", "go to start"},
 			{"G/end", "go to end"},
+			{"/", "filter"},
 			{"?", "hide help"},
 		}
 	}

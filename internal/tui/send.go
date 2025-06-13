@@ -8,6 +8,7 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/zipr"
 	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -43,6 +44,7 @@ type zipTracker struct {
 	start              time.Time
 	timeTaken          time.Duration
 	logs               []string
+	archives           []string
 	progressCh         <-chan uint64
 	logCh              <-chan string
 	totalSize          uint64
@@ -102,17 +104,16 @@ func (z *zipTracker) setLogsLength(l int) {
 	z.logs = newLogs
 }
 
-func (z *zipTracker) markDone() {
+func (z *zipTracker) destroy() {
 	z.cancel()
 	z.ctx, z.cancel, z.progressCh, z.logCh, z.logCh = nil, nil, nil, nil, nil
-	z.state = done
 }
 
 type sendModel struct {
 	selections              *selections
 	zipTracker              *zipTracker
-	btnIndex                int
 	progress                progress.Model
+	continueTimer           timer.Model
 	titleStyle              lipgloss.Style
 	showProgress, showHelp  bool
 	isActive, disableKeymap bool
@@ -121,7 +122,7 @@ type sendModel struct {
 func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "ctrl+c":
-		return m.zipTracker.state != done
+		return m.zipTracker.state == processing
 	case "left", "right", "h", "l", "tab", "shift+tab":
 		return m.isActive
 	default:
@@ -135,9 +136,10 @@ func initialSendModel() sendModel {
 		progress.WithoutPercentage(),
 	)
 	return sendModel{
-		zipTracker: new(zipTracker), // so we don't get nil pointers
-		titleStyle: titleStyle.Margin(0, 2),
-		progress:   p,
+		zipTracker:    new(zipTracker),
+		titleStyle:    titleStyle.Margin(0, 2),
+		progress:      p,
+		continueTimer: timer.NewWithInterval(3*time.Second, 100*time.Millisecond),
 	}
 }
 
@@ -160,18 +162,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 		case "ctrl+c":
 			return m, m.confirmStopZipping()
-
-		case "left", "h":
-			m.btnIndex = 0
-
-		case "right", "l":
-			m.btnIndex = 1
-
-		case "tab":
-			m.btnIndex = (m.btnIndex + 1) % 2
-
-		case "shift+tab":
-			m.btnIndex = (m.btnIndex - 1 + 2) % 2
 
 		case "?":
 			m.showHelp = !m.showHelp
@@ -200,7 +190,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 		shutdownCtx := bgtask.Get().ShutdownCtx()
 		progCh := make(chan uint64, 1)
-		logCh := make(chan string, 10)
+		logCh := make(chan string)
 		m.zipTracker = newZipTracker(shutdownCtx, progCh, logCh)
 		m.updateDimensions() // update the logs length
 
@@ -210,6 +200,10 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		}
 		if err != nil {
 			return m, errMsg{err: err, fatal: true}.cmd
+		}
+
+		if !cfg.Share.ZipFiles && m.selections.dirs == 0 {
+			// TODO: go and host the files directly
 		}
 
 		return m, tea.Batch(
@@ -230,13 +224,28 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		return m, m.trackLogs()
 
 	case zippingDoneMsg:
-		m.zipTracker.markDone()
+		m.zipTracker.archives = msg
+		m.zipTracker.state = done
+		m.zipTracker.destroy()
 		m.updateDimensions()
+		return m, m.startContinueTimer()
 
-	case zippingErr:
-		//m.zipTracker.markDone()
+	case zippingCanceledMsg:
+		m.zipTracker.state = canceled
+		m.continueTimer.Timeout = 3 * time.Second
+		return m, m.startContinueTimer()
+
+	case zippingErrMsg:
+		//m.zipTracker.destroy()
 		log.Println(msg.Error())
 
+	case timer.TickMsg:
+		if msg.ID == m.continueTimer.ID() {
+			if m.continueTimer.Timedout() && m.zipTracker.state == canceled {
+				return m, localChildSwitchMsg{child: dirNav, focus: true}.cmd
+			}
+			return m, m.handleContinueModelUpdate(msg)
+		}
 	}
 
 	return m, m.handleProgressModelUpdate(msg)
@@ -253,7 +262,7 @@ func (m sendModel) View() string {
 		customSendHelpTable(m.showHelp).Width(smallContainerW() - 2).Render(),
 	}
 	if m.zipTracker.state == done || m.zipTracker.state == canceled {
-		components = slices.Insert(components, 5, m.renderBtns())
+		components = slices.Insert(components, 5, m.renderContinueTimer())
 		m.updateDimensions()
 	}
 	v = lipgloss.JoinVertical(lipgloss.Top, components...)
@@ -264,6 +273,17 @@ func (m *sendModel) handleProgressModelUpdate(msg tea.Msg) tea.Cmd {
 	newModel, cmd := m.progress.Update(msg)
 	m.progress = newModel.(progress.Model)
 	return cmd
+}
+
+func (m *sendModel) handleContinueModelUpdate(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	m.continueTimer, cmd = m.continueTimer.Update(msg)
+	return cmd
+}
+
+func (m *sendModel) startContinueTimer() tea.Cmd {
+	m.continueTimer.Timeout = 3 * time.Second
+	return m.continueTimer.Init()
 }
 
 func (m *sendModel) updateKeymap(disable bool) {
@@ -282,7 +302,7 @@ func (m *sendModel) updateDimensions() {
 	}
 	subH += lipgloss.Height(strings.Join(components, "\n"))
 	if m.zipTracker.state == done || m.zipTracker.state == canceled {
-		subH += lipgloss.Height(m.renderBtns())
+		subH += lipgloss.Height(m.renderContinueTimer())
 	}
 	m.zipTracker.setLogsLength(max(0, workableH()-subH))
 }
@@ -374,41 +394,11 @@ func (m sendModel) renderProgress() string {
 	return lipgloss.JoinVertical(lipgloss.Top, m.progress.View(), p)
 }
 
-func (m sendModel) renderBtns() string {
-	btn1, btn2 := "CANCEL", "CONTINUE"
-	w := (smallContainerW() - 3) / 2
-
-	btn1 = runewidth.Truncate(btn1, w-2, "✕")
-	btn2 = runewidth.Truncate(btn2, w-2, "✓")
-
-	inactiveStyle := lipgloss.NewStyle().
-		Background(subduedGrayColor).
-		Foreground(highlightColor).
-		Align(lipgloss.Center).
-		Width(w).
-		Padding(0, 1)
-	activeStyle := inactiveStyle.
-		Background(highlightColor).
-		Foreground(subduedHighlightColor)
-
-	if m.zipTracker.state == canceled {
-		return activeStyle.Width(smallContainerW() - 2).Render(btn2)
-	}
-
-	mr := 1
-	if smallContainerW()%2 == 0 { // is odd
-		mr += 1
-	}
-	switch m.btnIndex {
-	case 0:
-		btn1 = activeStyle.MarginRight(mr).Render(btn1)
-		btn2 = inactiveStyle.Render(btn2)
-	case 1:
-		btn1 = inactiveStyle.MarginRight(mr).Render(btn1)
-		btn2 = activeStyle.Render(btn2)
-	}
-
-	return lipgloss.JoinHorizontal(lipgloss.Center, btn1, btn2)
+func (m sendModel) renderContinueTimer() string {
+	t := fmt.Sprintf("Continue in %.1f Sec", m.continueTimer.Timeout.Seconds())
+	t = runewidth.Truncate(t, smallContainerW()-2, "…")
+	t = lipgloss.NewStyle().Foreground(midHighlightColor).Italic(true).Render(t)
+	return lipgloss.PlaceHorizontal(smallContainerW()-1, lipgloss.Center, t)
 }
 
 func (m *sendModel) processFiles(
@@ -453,11 +443,11 @@ func (m *sendModel) processFiles(
 		// if the zipping is canceled, we need to wait for the cancellation to finish
 		if m.zipTracker.state == canceling {
 			<-m.zipTracker.ctx.Done()
-			m.zipTracker.state = canceled
+			return zippingCanceledMsg{}
 		}
 
 		if err != nil {
-			return zippingErr(err)
+			return zippingErrMsg(err)
 		}
 		return zippingDoneMsg(archives)
 	}

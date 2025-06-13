@@ -5,29 +5,30 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/server"
 	"github.com/MuhamedUsman/letshare/internal/util"
-	"log"
 	"log/slog"
 	"os"
-	"time"
 )
 
 func main() {
 	util.ConfigureSlog(os.Stderr)
+	slog.SetLogLoggerLevel(slog.LevelWarn)
 	s := server.New()
 	m := mdns.New()
-	instance := "Letshare"
+	instance := "letshare"
 	// Publishing DNS Entry
 	s.BT.Run(func(shutdownCtx context.Context) {
 		slog.Info("Publishing Multicast DNS Entry", "instance", instance)
-		if err := m.Publish(shutdownCtx, instance, "Sharing Files"); err != nil {
+		if err := m.Publish(shutdownCtx, instance, instance, 80); err != nil {
 			slog.Error(err.Error())
 		}
 	})
-	go func() {
-		if err := s.StartServerForDir("C:/Users/usman/Downloads/Programs"); err != nil {
+	s.BT.Run(func(shutdownCtx context.Context) {
+		slog.Info("Discovering Multicast DNS Entries")
+		if err := m.Discover(shutdownCtx); err != nil {
 			slog.Error(err.Error())
 		}
-	}()
-	errCh := m.DiscoverMDNSEntries(10*time.Second, 250*time.Millisecond)
-	log.Println(<-errCh)
+	})
+	if err := s.StartServerForDir("C:/Users/usman/Downloads/Programs"); err != nil {
+		slog.Error(err.Error())
+	}
 }
