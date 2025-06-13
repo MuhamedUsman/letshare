@@ -47,7 +47,7 @@ func (m extensionSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m extensionSpaceModel) Init() tea.Cmd {
-	return m.extDirNav.Init()
+	return tea.Batch(m.extDirNav.Init(), m.preference.Init())
 }
 
 func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) {

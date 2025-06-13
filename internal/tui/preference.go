@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type preferenceType int
@@ -126,8 +127,8 @@ func initialPreferenceModel() preferenceModel {
 	}
 }
 
-func (m preferenceModel) capturesKeyEvent(_ tea.KeyMsg) bool {
-	return m.active
+func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
+	return msg.String() != "ctrl+c" && m.active
 }
 
 func (m preferenceModel) Init() tea.Cmd {
@@ -225,6 +226,9 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		if msg {
 			return m, tea.Batch(m.inactivePreference(), m.handleUpdate(msg))
 		}
+
+	case rerenderPreferencesMsg:
+		m.renderViewport()
 
 	}
 
@@ -486,7 +490,9 @@ func (m *preferenceModel) updateKeymap(disable bool) {
 func (m *preferenceModel) activateInsertMode() tea.Cmd {
 	m.insertMode = m.preferenceQues[m.cursor].pType == input
 	m.txtInput.Prompt = m.preferenceQues[m.cursor].prompt
-	m.txtInput.SetValue(m.preferenceQues[m.cursor].input)
+	s := m.preferenceQues[m.cursor].input
+	m.txtInput.SetValue(s)
+	m.txtInput.SetCursor(utf8.RuneCountInString(s))
 	return m.txtInput.Focus()
 }
 
@@ -513,6 +519,7 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Receive.DownloadFolder
 		}
 	}
+
 }
 
 func (m *preferenceModel) inactivePreference() tea.Cmd {
@@ -582,7 +589,7 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 	}
 	nopeFunc := func() tea.Cmd {
 		m.resetToSavedState()
-		return m.inactivePreference()
+		return tea.Sequence(rerenderPreferencesCmd, m.inactivePreference())
 	}
 	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc, nil)
 }

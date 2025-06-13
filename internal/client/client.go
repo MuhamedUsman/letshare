@@ -31,11 +31,11 @@ func New() *Client {
 
 func (c *Client) IndexDirectory(instance string) ([]*domain.FileInfo, error) {
 	entries := c.mdns.Entries()
-	hostname, ok := entries[instance]
+	entry, ok := entries[instance]
 	if !ok {
 		return nil, fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
-	resp, err := c.http.Get("http://" + hostname)
+	resp, err := c.http.Get("http://" + entry.Hostname)
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
@@ -67,11 +67,11 @@ func (c *Client) IndexDirectory(instance string) ([]*domain.FileInfo, error) {
 
 func (c *Client) StopServer(instance string) (int, string, error) {
 	entries := c.mdns.Entries()
-	hostname, ok := entries[instance]
+	entry, ok := entries[instance]
 	if !ok {
 		return 0, "", fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
-	resp, err := c.http.Post("http://"+hostname+stop, "application/json", new(bytes.Buffer))
+	resp, err := c.http.Post("http://"+entry.Hostname+stop, "application/json", new(bytes.Buffer))
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {

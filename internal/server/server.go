@@ -24,23 +24,22 @@ import (
 )
 
 type Server struct {
-	// Option to let others on the same LAN to stop this instance from hosting
-	Stoppable bool
+	// file paths to be served, [K: accessID, V: filepath]
+	FilePaths map[string]string
 	// Once Done, the server will exit
 	StopCtx context.Context
 	// Cancel func for StopCtx
 	StopCtxCancel context.CancelFunc
-	// Every Goroutine must run through BT Run function
-	BT *bgtask.BackgroundTask
-	mu *sync.Mutex
+	mu            *sync.Mutex
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
+	// Option to let others on the same LAN to stop this instance from hosting
+	Stoppable bool
 }
 
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		BT:            bgtask.Get(),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),
@@ -73,7 +72,7 @@ type CopyStatChan <-chan CopyStat
 // will be deleted from the target directory.
 func (s *Server) CopyFilesToDir(dir string, files ...string) CopyStatChan {
 	ch := make(chan CopyStat)
-	s.BT.Run(func(shutdownCtx context.Context) {
+	bgtask.Get().Run(func(shutdownCtx context.Context) {
 		defer close(ch)
 		for i, f := range files {
 			select {
@@ -175,7 +174,7 @@ func (s *Server) StartServerForDir(dir string) error {
 	if err = <-errChan; err != nil {
 		return fmt.Errorf("server shutting down: %v", err)
 	}
-	if err = s.BT.Shutdown(5 * time.Second); err != nil {
+	if err = bgtask.Get().Shutdown(5 * time.Second); err != nil {
 		return fmt.Errorf("shutting down background tasks: %v", err)
 	}
 	return nil
