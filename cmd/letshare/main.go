@@ -1,19 +1,18 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
+	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/lmittmann/tint"
+	"log"
 	"log/slog"
 	"os"
 	"time"
 )
-
-func init() {
-	h := tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: time.Kitchen})
-	slog.SetDefault(slog.New(h))
-}
 
 func main() {
 	f, err := tea.LogToFile("Letshare.log", "Letshare")
@@ -23,15 +22,23 @@ func main() {
 	}
 	defer f.Close()
 
-	_ = lipgloss.DefaultRenderer().HasDarkBackground()
+	h := tint.NewHandler(f, &tint.Options{TimeFormat: time.Kitchen})
+	slog.SetDefault(slog.New(h))
+
+	// mdns discovery
+	bgtask.Get().Run(func(shutdownCtx context.Context) {
+		if err = mdns.Get().Discover(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Fatal(err)
+		}
+	})
+
 	_, err = tea.NewProgram(
 		tui.InitialMainModel(),
 		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 		tea.WithoutBracketedPaste(),
-		tea.WithReportFocus(),
 	).Run()
 	if err != nil {
+		println()
 		slog.Error(err.Error())
 		os.Exit(1)
 	}

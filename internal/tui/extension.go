@@ -143,7 +143,7 @@ func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
 			Foreground(subduedHighlightColor)
 	} else {
 		m.titleStyle = titleStyle.
-			Background(subduedGrayColor).
+			Background(grayColor).
 			Foreground(highlightColor)
 	}
 }

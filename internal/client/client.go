@@ -24,18 +24,18 @@ type Client struct {
 
 func New() *Client {
 	return &Client{
-		mdns: mdns.New(),
-		http: &http.Client{Timeout: 5 * time.Second},
+		mdns: mdns.Get(),
+		http: &http.Client{Timeout: 2 * time.Second}, // same network, low latency expected
 	}
 }
 
-func (c *Client) IndexDirectory(instance string) ([]*domain.FileInfo, error) {
+func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, error) {
 	entries := c.mdns.Entries()
 	entry, ok := entries[instance]
 	if !ok {
 		return nil, fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
-	resp, err := c.http.Get("http://" + entry.Hostname)
+	resp, err := c.http.Get("http://" + entry.IP)
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
@@ -65,19 +65,19 @@ func (c *Client) IndexDirectory(instance string) ([]*domain.FileInfo, error) {
 	return dir.Indexes, nil
 }
 
-func (c *Client) StopServer(instance string) (int, string, error) {
+func (c *Client) StopServer(instance string) (int, error) {
 	entries := c.mdns.Entries()
 	entry, ok := entries[instance]
 	if !ok {
-		return 0, "", fmt.Errorf("instance %q not found in mDNS entries", instance)
+		return -1, fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
 	resp, err := c.http.Post("http://"+entry.Hostname+stop, "application/json", new(bytes.Buffer))
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
-			return http.StatusRequestTimeout, "", fmt.Errorf("stopping server: request timed out")
+			return http.StatusRequestTimeout, nil
 		}
-		return -1, "", fmt.Errorf("stopping server: %v", err)
+		return -1, fmt.Errorf("stopping server: %v", err)
 	}
 	defer resp.Body.Close()
 	bytes, err := io.ReadAll(resp.Body)
@@ -85,12 +85,12 @@ func (c *Client) StopServer(instance string) (int, string, error) {
 		Status string `json:"status"`
 	}
 	if err = json.Unmarshal(bytes, &response); err != nil {
-		return -1, "", fmt.Errorf("parsing server response while stopping: %v", err)
+		return -1, fmt.Errorf("parsing server response while stopping: %v", err)
 	}
 	if resp.StatusCode != http.StatusAccepted &&
 		resp.StatusCode != http.StatusForbidden &&
 		resp.StatusCode != http.StatusConflict {
-		return resp.StatusCode, "", fmt.Errorf("server returned status %d while stopping server", resp.StatusCode)
+		return resp.StatusCode, fmt.Errorf("server returned status %d while stopping server", resp.StatusCode)
 	}
-	return resp.StatusCode, response.Status, nil
+	return resp.StatusCode, nil
 }

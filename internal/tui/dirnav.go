@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/mattn/go-runewidth"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,7 +145,6 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
-
 		case "enter":
 			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
 				selDir := m.dirList.SelectedItem().FilterValue()
@@ -176,7 +174,6 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 		case "?":
 			m.showHelp = !m.showHelp
 			m.updateDimensions()
-
 		}
 
 	case dirEntryMsg:
@@ -213,11 +210,7 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 		m.setTitleStylesAsFocus()
 
 	case fsErrMsg:
-		return m, m.createDirListStatusMsg(string(msg), redBrightColor)
-
-	case errMsg:
-		// TODO: Do not forget such errors
-		log.Fatal(msg)
+		return m, m.createDirListStatusMsg(string(msg), redColor)
 
 	}
 	return m, m.handleDirListUpdate(msg)
@@ -392,8 +385,9 @@ func (dirNavModel) readDir(dir string, action dirAction) tea.Cmd {
 				return fsErrMsg("No such dir!")
 			}
 			return errMsg{
-				err:    fmt.Errorf("reading directory %q: %v", dir, err),
-				errStr: "Unable to processed directory contents",
+				errHeader: "APPLICATION ERROR",
+				err:       fmt.Errorf("reading directory %q: %v", dir, err),
+				errStr:    "Unable to processed directory contents",
 			}.cmd
 		}
 		dirEntries := make([]string, 0)
@@ -462,7 +456,7 @@ func (m *dirNavModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor)
 
 func (m *dirNavModel) setTitleStylesAsFocus() {
 	s := m.dirList.Styles.Title.
-		Background(subduedGrayColor).
+		Background(grayColor).
 		Foreground(highlightColor)
 	if currentFocus == local {
 		s = m.dirList.Styles.Title.

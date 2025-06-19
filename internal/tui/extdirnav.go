@@ -302,7 +302,7 @@ func (m *extDirNavModel) updateTitleStyleAsFocus(focus bool) {
 	} else {
 		m.titleStyle = titleStyle.
 			UnsetMarginBottom().
-			Background(subduedGrayColor).
+			Background(grayColor).
 			Foreground(highlightColor)
 	}
 }
@@ -332,8 +332,9 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 				return fsErrMsg("No such dir!")
 			}
 			return errMsg{
-				err:    fmt.Errorf("reading directory %q: %v", path, err),
-				errStr: "Unable to processed directory contents",
+				errHeader: "APPLICATION ERROR",
+				err:       fmt.Errorf("reading directory %q: %v", path, err),
+				errStr:    "Unable to processed directory contents",
 			}.cmd
 		}
 
@@ -520,15 +521,22 @@ func (m extDirNavModel) selectedFilenames() (filenames []string, dirs, files int
 }
 
 func (m *extDirNavModel) confirmDiscardSelOnNewExtDir(msg extendDirMsg) tea.Cmd {
-	selBtn := yup
+	selBtn := positive
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
-	yupFunc := func() tea.Cmd {
+	positiveFunc := func() tea.Cmd {
 		m.focusOnExtend = msg.focus
 		m.resetSelections()
 		return m.readDir(msg.path)
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
+	return alertDialogMsg{
+		header:         header,
+		body:           body,
+		cursor:         selBtn,
+		positiveBtnTxt: "YUP!",
+		negativeBtnTxt: "NOPE",
+		positiveFunc:   positiveFunc,
+	}.cmd
 }
 
 func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
@@ -540,14 +548,21 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	if m.getSelectionCount() == 0 {
 		return cmd
 	}
-	selBtn := yup
+	selBtn := positive
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
-	yupFunc := func() tea.Cmd {
+	positiveFunc := func() tea.Cmd {
 		m.resetSelections()
 		return cmd
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
+	return alertDialogMsg{
+		header:         header,
+		body:           body,
+		cursor:         selBtn,
+		positiveBtnTxt: "YUP!",
+		negativeBtnTxt: "NOPE",
+		positiveFunc:   positiveFunc,
+	}.cmd
 }
 
 func (m *extDirNavModel) confirmSend() tea.Cmd {
@@ -562,11 +577,11 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 	if dirs > 0 && files > 0 {
 		space = " and "
 	}
-	selBtn := yup
+	selBtn := positive
 	header := "PROCEED?"
 	body := fmt.Sprintf(`Selected “%s%s%s” will be processed as per preferences. To change preferences, press “esc” & “ctrl+p”.`,
 		dirStr, space, fileStr)
-	yupFunc := func() tea.Cmd {
+	positiveFunc := func() tea.Cmd {
 		m.resetSelections()
 		cmd := processSelectionsMsg{
 			parentPath: m.dirPath,
@@ -576,7 +591,14 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 		}.cmd
 		return tea.Batch(cmd, extensionChildSwitchMsg{home, false}.cmd)
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nil, nil)
+	return alertDialogMsg{
+		header:         header,
+		body:           body,
+		cursor:         selBtn,
+		positiveBtnTxt: "YUP!",
+		negativeBtnTxt: "NOPE",
+		positiveFunc:   positiveFunc,
+	}.cmd
 }
 
 func (m extDirNavModel) grantSpaceFocusSwitch() bool {

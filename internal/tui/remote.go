@@ -43,7 +43,7 @@ func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
 				Foreground(subduedHighlightColor)
 		} else {
 			m.titleStyle = titleStyle.
-				Background(subduedGrayColor).
+				Background(grayColor).
 				Foreground(highlightColor)
 		}
 	}

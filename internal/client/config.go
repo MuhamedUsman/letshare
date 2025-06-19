@@ -24,6 +24,7 @@ type PersonalConfig struct {
 }
 
 type ShareConfig struct {
+	InstanceName  string `toml:"instance_name"`
 	ZipFiles      bool   `toml:"zip_files"`
 	Compression   bool   `toml:"compression"`
 	SharedZipName string `toml:"shared_zip_name"`
@@ -127,6 +128,7 @@ func defaultConfig() (Config, error) {
 			Username: hostname,
 		},
 		Share: ShareConfig{
+			InstanceName:  hostname,
 			ZipFiles:      false,
 			SharedZipName: "shared.zip",
 		},

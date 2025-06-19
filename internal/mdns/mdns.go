@@ -2,162 +2,178 @@ package mdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
-	"github.com/grandcat/zeroconf"
-	"strings"
+	"github.com/brutella/dnssd"
+	"github.com/brutella/dnssd/log"
 	"sync"
-	"time"
+)
+
+const (
+	DefaultInstance = "letshare"
+	mdnsService     = "_http._tcp"
 )
 
 var (
-	once = new(sync.Once)
-	mdns *MDNS
+	defaultOwnerKey = "defaultOwner"
+	once            = new(sync.Once)
+	mdns            *MDNS
 )
 
-// ServiceEntry represents a map of discovered mDNS services where:
-// - Key: Instance name of the service
-// - Value: Host name of the device providing the service
-type ServiceEntry map[string]string
-
-// MDNS handles multicast DNS service registration and discovery on local networks.
-// It provides methods to publish services and discover other services.
-type MDNS struct {
-	bt *bgtask.BackgroundTask
-	mu sync.RWMutex
-	// Stores discovered mDNS entries
-	entries ServiceEntry
+// ServiceEntry represents a discovered mDNS service with its network details.
+type ServiceEntry struct {
+	Hostname, IP string
+	Port         int
 }
 
-// New creates and returns a new MDNS instance ready for use.
-// The returned instance is initialized with an empty entries map
-// and a background task manager.
+// ServiceEntries represents discovered mDNS services where:
+// - Key: Service instance name
+// - Value: Service network details (Hostname, IP, Port)
+type ServiceEntries map[string]ServiceEntry
+
+// MDNS handles multicast DNS service registration and discovery on local networks.
+// It provides methods to publish services and discover other services on the network.
+type MDNS struct {
+	mu sync.RWMutex
+	// Stores discovered mDNS entries
+	entries ServiceEntries
+	// name of the user currently occupying the default instance
+	defaultOwner string
+	// Channel to signal updates or changes
+	notifyCh chan struct{}
+}
+
+// Get creates and returns a new MDNS instance.
+// The returned instance is initialized with an empty service entries map.
 //
 // This function uses a singleton pattern to ensure only one MDNS instance
-// exists across the application. Subsequent calls will return the same instance.
-func New() *MDNS {
+// exists across the application. Subsequent calls return the same instance.
+func Get() *MDNS {
 	once.Do(func() {
-		mdns = &MDNS{
-			bt:      bgtask.Get(),
-			entries: make(ServiceEntry),
-		}
+		mdns = &MDNS{entries: make(ServiceEntries)}
+		log.Info.Disable() // Disable logging for dnssd package
 	})
 	return mdns
 }
 
-// Publish advertises a service via Multicast DNS over available network interfaces.
-// It uses the predefined service "_http._tcp", domain "local.", and port 80.
-// The service remains published until the provided context is canceled.
+// Publish advertises a service via multicast DNS on available network interfaces.
+// The service uses the "_http._tcp" service type and "local." domain.
+// The service remains advertised until the provided context is canceled.
 //
 // Parameters:
-//   - ctx: Context that controls the lifetime of the mDNS service
-//   - instance: The instance name to publish (visible as the service name)
-//   - info: Optional text records to associate with the service (key-value pairs)
+//   - ctx: Context that controls the service advertisement lifetime
+//   - instance: The service instance name (visible to other devices)
+//   - Hostname: The Hostname of the device providing the service
+//   - Port: The Port number on which the service is available
 //
-// Returns an error if the service registration fails.
-func (r *MDNS) Publish(ctx context.Context, instance string, info ...string) error {
-	server, err := zeroconf.Register(instance, "_letshare._tcp", "local.", 5353, info, nil)
-	if err != nil {
-		return fmt.Errorf("registering mdns entry through zeroconf: %v", err)
+// Returns an error if service registration fails.
+func (r *MDNS) Publish(ctx context.Context, instance, host string, username string, port int) error {
+	cfg := dnssd.Config{
+		Name: instance,
+		Type: mdnsService,
+		Host: host,
+		Port: port,
+		Text: map[string]string{defaultOwnerKey: username},
 	}
-	defer server.Shutdown()
-	<-ctx.Done()
+	sv, err := dnssd.NewService(cfg)
+	if err != nil {
+		return fmt.Errorf("registering mdns entry: %v", err)
+	}
+
+	rp, err := dnssd.NewResponder()
+	if err != nil {
+		return fmt.Errorf("creating mdns responder: %v", err)
+	}
+
+	hdl, err := rp.Add(sv)
+	if err != nil {
+		return fmt.Errorf("adding service to mdns responder: %v", err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		rp.Remove(hdl)
+	}()
+
+	// if it's the default instance, store the owner
+	if instance == DefaultInstance {
+		r.mu.Lock()
+		r.defaultOwner = instance
+		r.mu.Unlock()
+	}
+
+	if err = rp.Respond(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("responding to mdns requests: %v", err)
+	}
 	return nil
 }
 
-// DiscoverMDNSEntries continuously discovers mDNS services on the local network
-// at regular intervals. Discovered services are stored in the MDNS.entries field.
+// Discover continuously discovers mDNS services on the local network.
+// Discovered services are automatically stored in the internal entries map
+// and can be retrieved using the Entries() method.
 //
 // Parameters:
-//   - afterEach: Duration to wait between discovery attempts
-//   - lookFor: Maximum duration to spend on each discovery attempt
+//   - ctx: Context that controls the discovery process lifetime
+//   - service: The service type to discover (e.g., "_http._tcp.local.")
 //
-// Returns a channel that will receive any errors encountered during discovery.
-// The channel is closed when discovery stops.
-//
-// The first discovery attempt occurs immediately, with subsequent attempts
-// occurring after waiting for the 'afterEach' duration. The discovery process
-// continues until the Application exits. When discovery stops, the entries map
-// is cleared, and the entries can be accessed through MDNS.Entries.
-func (r *MDNS) DiscoverMDNSEntries(afterEach, lookFor time.Duration) <-chan error {
-	errCh := make(chan error)
-	r.bt.Run(func(shutdownCtx context.Context) {
-		defer func() {
-			close(errCh)
-			clear(r.entries)
-		}()
-		ticker := time.NewTimer(0) // fetch entries with no delay for the 1st time
-		for {
-			select {
-			case <-shutdownCtx.Done():
-				return
-			case <-ticker.C:
-				entries, err := r.lookup(lookFor)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				r.mu.Lock()
-				r.entries = entries // replace with updated entries
-				r.mu.Unlock()
-				ticker.Reset(afterEach) // once fetched, reset to actual interval
-			}
+// Returns an error if the discovery process fails to start.
+func (r *MDNS) Discover(ctx context.Context) error {
+	addFunc := dnssd.AddFunc(func(e dnssd.BrowseEntry) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.entries[e.Name] = ServiceEntry{
+			Hostname: e.Host,
+			IP:       e.IPs[0].To4().String(), // Assuming the first IP is the primary one
+			Port:     e.Port,
+		}
+
+		// If this is the default instance, update the owner
+		if e.Name == DefaultInstance {
+			r.defaultOwner = e.Text[defaultOwnerKey]
+		}
+
+		if r.notifyCh != nil {
+			close(r.notifyCh)
 		}
 	})
-	return errCh
-}
+	rmvFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		delete(r.entries, e.Name)
 
-// lookup performs a single discovery operation for "_http._tcp" services
-// on the local network. It collects discovered services for the specified
-// timeout duration.
-//
-// Parameters:
-//   - timeout: Maximum duration to spend discovering services
-//
-// Returns:
-//   - ServiceEntry: Map of discovered service instances to their hostnames
-//   - error: An error if service discovery initialization fails
-//
-// This is an internal method used by DiscoverMDNSEntries.
-func (r *MDNS) lookup(timeout time.Duration) (ServiceEntry, error) {
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		return nil, fmt.Errorf("initializing mdns resolver: %v", err)
-	}
-	entriesCh := make(chan *zeroconf.ServiceEntry)
-	entries := make(ServiceEntry)
-	r.bt.Run(func(shutdownCtx context.Context) {
-		for {
-			select {
-			case <-shutdownCtx.Done():
-				return
-			case e, ok := <-entriesCh:
-				if !ok {
-					return
-				}
-				r.mu.Lock()
-				entries[e.Instance] = strings.TrimSuffix(e.HostName, ".") // K: Letshare | V: usman-v14.local
-				r.mu.Unlock()
-			}
+		// If the default instance is removed, clear the owner
+		if e.Name == DefaultInstance {
+			r.defaultOwner = ""
+		}
+
+		if r.notifyCh != nil {
+			close(r.notifyCh)
 		}
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	err = resolver.Browse(ctx, "_letshare._tcp", "local.", entriesCh)
-	if err != nil {
-		return nil, fmt.Errorf("browsing mdns entries: %v", err)
-	}
-	<-ctx.Done()
-	return entries, nil
+	service := fmt.Sprintf("%s.local.", mdnsService)
+	return dnssd.LookupType(ctx, service, addFunc, rmvFunc)
 }
 
-// Entries returns a copy of the current set of discovered mDNS entries.
-// It's safe to call this method concurrently from multiple goroutines.
+// NotifyOnChange blocks until a change occurs in the discovered mDNS entries.
+func (r *MDNS) NotifyOnChange() {
+	r.notifyCh = make(chan struct{})
+	<-r.notifyCh
+}
+
+// Entries returns a copy of all currently discovered mDNS services.
+// This method is safe for concurrent use from multiple goroutines.
 //
 // Returns:
-//   - ServiceEntry: A map of service instance names to their host names
-func (r *MDNS) Entries() ServiceEntry {
+//   - ServiceEntries: A map of service instance names to their network details
+func (r *MDNS) Entries() ServiceEntries {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.entries
+}
+
+// DefaultOwner returns the username of the owner of the default instance.
+func (r *MDNS) DefaultOwner() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defaultOwner
 }

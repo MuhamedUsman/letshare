@@ -2,42 +2,47 @@ package mdns
 
 import (
 	"context"
-	"errors"
+	"log/slog"
 	"testing"
 	"time"
 )
 
 func TestMDNSDiscoveryAndPublication(t *testing.T) {
-	mdns := New()
+	m := Get()
 	instance := "TestInstance"
-	var entries ServiceEntry
+	host := "TestHost"
+
+	slog.SetLogLoggerLevel(slog.LevelWarn)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	publishReady := make(chan struct{})
+
 	// Start publishing in background
 	go func() {
-		close(publishReady) // signals publishing goroutine is in action
-		err := mdns.Publish(ctx, instance)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			t.Errorf("publishing entry: %v", err)
+		if err := m.Publish(ctx, instance, host, 80); err != nil {
+			t.Error(err)
+			return
 		}
 	}()
 
-	<-publishReady
-	// lookup the published entry
-	var err error
-	entries, err = mdns.lookup(500 * time.Millisecond) // some timeout so the publishing may finish till then
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatal(err)
-	}
-	// once the lookup finishes. canceling stops the Publishing
-	cancel()
+	go func() {
+		if err := m.Discover(ctx); err != nil {
+			t.Error(err)
+			return
+		}
+	}()
 
-	// Verify results
-	if hostname, ok := entries[instance]; !ok {
-		t.Fatal("Failed to discover the published instance")
-	} else if hostname == "" {
-		t.Fatal("Discovered instance has empty hostname")
+	// Retry loop instead of fixed delay
+	var found bool
+	for i := 0; i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if e, ok := m.Entries()[instance]; ok && e.Hostname == host {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Fatal("Failed to discover the published instance within timeout")
 	}
 }
