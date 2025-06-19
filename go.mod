@@ -3,6 +3,7 @@ module github.com/MuhamedUsman/letshare
 go 1.24.4
 
 require (
+github.com/google/uuid v1.6.0
 	github.com/BurntSushi/toml v1.5.0
 	github.com/brutella/dnssd v1.2.14
 	github.com/charmbracelet/bubbles v0.21.0

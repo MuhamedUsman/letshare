@@ -47,7 +47,7 @@ type MainModel struct {
 	localSpace     localSpaceModel
 	extensionSpace extensionSpaceModel
 	remoteSpace    remoteSpaceModel
-	confirmation   confirmDialogModel
+	confirmation   alertDialogModel
 }
 
 func InitialMainModel() MainModel {
@@ -55,7 +55,7 @@ func InitialMainModel() MainModel {
 		localSpace:     initialLocalSpaceModel(),
 		extensionSpace: initialExtensionSpaceModel(),
 		remoteSpace:    initialRemoteSpaceModel(),
-		confirmation:   initialConfirmDialogModel(),
+		confirmation:   initialAlertDialogModel(),
 	}
 }
 
@@ -128,12 +128,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		if msg.fatal {
+			println()
 			slog.Error(msg.err.Error())
 			os.Exit(1)
 		}
-
+		return m, alertDialogMsg{header: msg.errHeader, body: msg.errStr}.cmd
 	}
-
+	
 	return m, m.handleChildModelUpdates(msg)
 }
 

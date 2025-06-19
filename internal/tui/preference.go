@@ -49,6 +49,7 @@ type preferenceKey int
 
 const (
 	username preferenceKey = iota
+	instanceName
 	zipFiles
 	compression
 	sharedZipName
@@ -57,6 +58,7 @@ const (
 
 var prefKeyNames = []string{
 	"USERNAME",
+	"INSTANCE NAME",
 	"ZIP FILES?",
 	"COMPRESSED ZIP?",
 	"SHARED ZIP NAME",
@@ -79,7 +81,7 @@ type preferenceQue struct {
 	prompt, input            string
 	startsAtLine, endsAtLine int
 	// a pSec of an option type has this check
-	check bool // true -> yup!, false -> nope
+	check bool // true -> positive!, false -> negative
 }
 
 type preferenceInactiveMsg struct{}
@@ -101,6 +103,7 @@ type preferenceModel struct {
 func initialPreferenceModel() preferenceModel {
 	cfg, err := client.LoadConfig()
 	if err != nil {
+		println()
 		slog.Error("unable to load config:", "error", err)
 		os.Exit(1)
 	}
@@ -150,6 +153,9 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		if m.insertMode {
 			switch msg.String() {
 			case "enter":
+				if isValid, txt := m.validateInput(m.txtInput.Value()); !isValid {
+					return m, m.showInvalidInputAlert(txt)
+				}
 				m.preferenceQues[m.cursor].input = m.txtInput.Value()
 				m.renderViewport()
 				m.resetInsertMode()
@@ -320,7 +326,7 @@ func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
 	} else {
 		m.titleStyle = titleStyle.
 			UnsetMarginBottom().
-			Background(subduedGrayColor).
+			Background(grayColor).
 			Foreground(highlightColor)
 	}
 }
@@ -424,9 +430,9 @@ func renderInactiveInputField(prompt, placeholder string) string {
 }
 
 func renderInactiveBtn(check bool) string {
-	s := nope.string()
+	s := "NOPE"
 	if check {
-		s = yup.string()
+		s = "YUP!"
 	}
 	return preferenceQueBtnStyle.
 		Background(highlightColor).
@@ -436,12 +442,12 @@ func renderInactiveBtn(check bool) string {
 }
 
 func renderActiveBtns(check bool) string {
-	btn1 := preferenceQueBtnStyle  // nope
-	btn2 := preferenceQueBtnStyle. // yup!
+	btn1 := preferenceQueBtnStyle  // negative
+	btn2 := preferenceQueBtnStyle. // positive!
 					Background(highlightColor).
 					Foreground(subduedHighlightColor).
 					Faint(true)
-	if !check { // btn1(nope) should be active
+	if !check { // btn1(negative) should be active
 		btn1, btn2 = btn2, btn1
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Left, btn1.Render("NOPE"), btn2.Render("YUP!"))
@@ -509,6 +515,8 @@ func (m *preferenceModel) resetToSavedState() {
 		switch q.title {
 		case username:
 			m.preferenceQues[i].input = cfg.Personal.Username
+		case instanceName:
+			m.preferenceQues[i].input = cfg.Share.InstanceName
 		case zipFiles:
 			m.preferenceQues[i].check = cfg.Share.ZipFiles
 		case compression:
@@ -534,6 +542,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 		switch q.title {
 		case username:
 			cfg.Personal.Username = q.input
+		case instanceName:
+			cfg.Share.InstanceName = q.input
 		case zipFiles:
 			cfg.Share.ZipFiles = q.check
 		case compression:
@@ -566,6 +576,8 @@ func (m preferenceModel) isUnsavedState() bool {
 		switch q.title {
 		case username:
 			unsaved = q.input != cfg.Personal.Username
+		case instanceName:
+			unsaved = q.input != cfg.Share.InstanceName
 		case zipFiles:
 			unsaved = q.check != cfg.Share.ZipFiles
 		case compression:
@@ -579,9 +591,9 @@ func (m preferenceModel) isUnsavedState() bool {
 	return unsaved
 }
 
-// grant the discard request and envelops "esc" as a command for yupFunc
+// grant the discard request and envelops "esc" as a command for positiveFunc
 func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
-	selBtn := yup
+	selBtn := positive
 	header := "UPDATE PREFERENCES?"
 	body := "Do you want to update preferences, unsaved changes will be lost."
 	yupFunc := func() tea.Cmd {
@@ -591,7 +603,36 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 		m.resetToSavedState()
 		return tea.Sequence(rerenderPreferencesCmd, m.inactivePreference())
 	}
-	return confirmDialogCmd(header, body, selBtn, yupFunc, nopeFunc, nil)
+	return alertDialogMsg{
+		header:         header,
+		body:           body,
+		cursor:         selBtn,
+		positiveBtnTxt: "YUP!",
+		negativeBtnTxt: "NOPE",
+		positiveFunc:   yupFunc,
+		negativeFunc:   nopeFunc,
+	}.cmd
+}
+
+func (m preferenceModel) validateInput(in string) (bool, string) {
+	switch m.preferenceQues[m.cursor].title {
+	case username:
+		return utf8.RuneCountInString(in) >= 3, "Username must be at least 3 characters long."
+	case instanceName:
+		return utf8.RuneCountInString(in) >= 3, "Instance name must be at least 3 characters long."
+	case sharedZipName:
+		return utf8.RuneCountInString(in) >= 3 && strings.HasSuffix(in, ".zip"),
+			"Shared ZIP name must be at least 3 characters long & ends with “.zip”"
+	case downloadFolder:
+		fstat, err := os.Stat(in)
+		return err == nil && fstat.IsDir(), "Download folder must be a valid directory path with read & write access."
+	default:
+		return true, ""
+	}
+}
+
+func (m preferenceModel) showInvalidInputAlert(txt string) tea.Cmd {
+	return alertDialogMsg{header: "INVALID INPUT!", body: txt}.cmd
 }
 
 func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
@@ -605,6 +646,14 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 			input:  cfg.Personal.Username,
 		},
 		{
+			title:  instanceName,
+			desc:   "Custom name of the server instance, accessible in browser through “http://instance-name.local”",
+			prompt: "Name: ",
+			pType:  input,
+			pSec:   share,
+			input:  cfg.Share.InstanceName,
+		},
+		{
 			title: zipFiles,
 			desc:  "Combine all selected files into a single zip archive. When disabled, each directory will be zipped separately.",
 			pType: option,
@@ -613,7 +662,7 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 		},
 		{
 			title: compression,
-			desc:  "Compress selected files, no compression will be significantly faster.",
+			desc:  "Compress selected files while zipping, no compression will be significantly faster.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.Compression,

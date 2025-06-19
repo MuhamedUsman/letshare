@@ -3,6 +3,9 @@ package tui
 import tea "github.com/charmbracelet/bubbletea"
 
 type errMsg struct {
+	// errHeader: header to display in the error message
+	// do not set if fatal is set to true
+	errHeader string
 	// err to log
 	err error
 	// errStr: user-friendly err
@@ -83,3 +86,13 @@ type zippingCanceledMsg struct{}
 type rerenderPreferencesMsg struct{}
 
 func rerenderPreferencesCmd() tea.Msg { return rerenderPreferencesMsg{} }
+
+type sendFilesMsg []string
+
+func (f sendFilesMsg) cmd() tea.Msg {
+	return f
+}
+
+func instanceStateCmd(s instanceState) tea.Cmd {
+	return func() tea.Msg { return s }
+}

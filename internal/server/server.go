@@ -2,26 +2,24 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/domain"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/justinas/alice"
-	"io"
 	"log"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"os/signal"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
+
+var ErrNonIdle = errors.New("server is not idle (serving files)")
 
 type Server struct {
 	// file paths to be served, [K: accessID, V: filepath]
@@ -40,97 +38,27 @@ type Server struct {
 func New() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
+		FilePaths:     make(map[string]string),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),
+		ActiveDowns:   0,
 		Stoppable:     true,
 	}
 }
 
-type CopyStat struct {
-	// current number of file being copied
-	N int // 0: Err occurred before copying
-	// error encountered while copying the file
-	Err error
-}
-
-type CopyStatChan <-chan CopyStat
-
-// CopyFilesToDir copies the specified files to the target directory.
-// It returns a CopyStatChan that reports progress and errors during the operation.
-//
-// The returned channel receives a CopyStat after each file operation, containing:
-// - N: The number of files processed so far (1-indexed)
-// - Err: Any error that occurred during the operation
-//
-// The channel will be closed when either:
-// - All files have been copied successfully
-// - An error occurs (copying stops at first error)
-// - The Server's shutdown context is canceled
-//
-// If the shutdown context is canceled during copying, all copied files
-// will be deleted from the target directory.
-func (s *Server) CopyFilesToDir(dir string, files ...string) CopyStatChan {
-	ch := make(chan CopyStat)
-	bgtask.Get().Run(func(shutdownCtx context.Context) {
-		defer close(ch)
-		for i, f := range files {
-			select {
-			case <-shutdownCtx.Done():
-				// Once canceled during copying delete all the files that are copied
-				for _, file := range files {
-					copiedFilepath := filepath.Join(dir, filepath.Base(file))
-					_ = os.Remove(copiedFilepath) // ignore any error
-				}
-				return
-			default:
-				n := i + 1
-				if _, err := os.Stat(dir); err != nil {
-					if os.IsNotExist(err) {
-						ch <- CopyStat{N: n, Err: fmt.Errorf("file does not exist: %v", f)}
-					} else {
-						ch <- CopyStat{N: n, Err: fmt.Errorf("cannot access file %q: %v", f, err.Error())}
-					}
-					return
-				}
-				destPath := filepath.Join(dir, filepath.Base(f))
-				if err := copyFile(f, destPath); err != nil {
-					ch <- CopyStat{N: n, Err: fmt.Errorf("copying file %q to %q: %v", f, destPath, err.Error())}
-					return
-				}
-				ch <- CopyStat{N: n, Err: nil}
-			}
-		}
-	})
-	return ch
-}
-
-func copyFile(src, dst string) error {
-	s, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("opening source file %s: %v", src, err)
-	}
-	defer func() {
-		if err = s.Close(); err != nil {
-			slog.Error("failed to close source file", "file", src, "Err", err)
-		}
-	}()
-	d, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("creating destination file %s: %v", dst, err)
-	}
-	defer func() {
-		if err = d.Close(); err != nil {
-			slog.Error("failed to close destination file", "file", dst, "Err", err)
-		}
-	}()
-	if _, err = io.Copy(d, s); err != nil {
-		return fmt.Errorf("copying file %s to %s: %v", src, dst, err)
+// SetFilePaths sets the file paths to be served by the server.
+func (s *Server) SetFilePaths(filePaths ...string) error {
+	for _, p := range filePaths {
+		randBytes := make([]byte, 3)
+		_, _ = rand.Read(randBytes)
+		id := hex.EncodeToString(randBytes)
+		s.FilePaths[id] = p
 	}
 	return nil
 }
 
-// StartServerForDir starts an HTTP server that serves files from the specified directory.
+// StartServer starts an HTTP server that serves files from Server.FilePaths.
 // It binds to the machine's outbound IP address on port 2403 and handles graceful shutdown
 // on context cancellation or OS termination signals (SIGINT, SIGTERM).
 //
@@ -138,23 +66,14 @@ func copyFile(src, dst string) error {
 // The server Routes are configured through the Server.Routes method which should
 // handle serving files from the provided directory.
 //
-// Parameters:
-//   - dir: The directory path to serve files from. Must be a valid directory.
-//
 // Returns:
 //   - error: An error if the server fails to start, encounters issues during shutdown,
 //     or if background tasks cannot be properly terminated.
 //
-// Panics:
-//   - If the provided 'dir' path exists but is not a directory.
-//
 // Note:
 //   - Uses GetOutboundIP() to determine the IP address for binding.
 //   - Will wait up to 5 seconds for server shutdown & 5 seconds for background tasks.
-func (s *Server) StartServerForDir(dir string) error {
-	if info, _ := os.Stat(dir); info != nil && !info.IsDir() {
-		panic(fmt.Sprintf("%q is not a directory", dir))
-	}
+func (s *Server) StartServer() error {
 	ipAddr, err := GetOutboundIP()
 	if err != nil {
 		log.Fatal(err)
@@ -164,7 +83,7 @@ func (s *Server) StartServerForDir(dir string) error {
 		ReadTimeout:       4 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		IdleTimeout:       10 * time.Second,
-		Handler:           s.Routes(dir),
+		Handler:           s.Routes(),
 	}
 	errChan := s.listenAndShutdown(server)
 	slog.Info("Starting Server", "address", server.Addr)
@@ -174,24 +93,26 @@ func (s *Server) StartServerForDir(dir string) error {
 	if err = <-errChan; err != nil {
 		return fmt.Errorf("server shutting down: %v", err)
 	}
-	if err = bgtask.Get().Shutdown(5 * time.Second); err != nil {
-		return fmt.Errorf("shutting down background tasks: %v", err)
-	}
 	return nil
+}
+
+func (s *Server) ShutdownServer(force bool) error {
+	if s.ActiveDowns == 0 || force {
+		s.StopCtxCancel()
+		return nil
+	}
+	return ErrNonIdle
 }
 
 func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	errChan := make(chan error)
 	go func() {
-		defer close(errChan)
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		select {
-		case <-s.StopCtx.Done():
-		case <-quit:
-		}
+		<-s.StopCtx.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		defer func() {
+			cancel()
+			close(errChan)
+		}()
 		if err := server.Shutdown(ctx); err != nil {
 			errChan <- fmt.Errorf("shutting down server: %v", err)
 		}
@@ -199,66 +120,50 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	return errChan
 }
 
-func (s *Server) Routes(dir string) http.Handler {
+func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	panicRecover := alice.New(s.recoverPanic)
-	mux.Handle("GET /", panicRecover.Then(s.JsonFileServer(dir)))
+	mux.Handle("GET /{$}", panicRecover.ThenFunc(s.indexFilesHandler))
+	mux.Handle("GET /{id}", panicRecover.ThenFunc(s.serveFileHandler))
 	mux.Handle("POST /stop", panicRecover.ThenFunc(s.Stop))
 	return mux
 }
 
-// JsonFileServer creates an HTTP handler that serves files from the specified directory.
-// For the root URL ("/"), it returns a JSON-formatted directory listing containing details
-// of all files (not subdirectories) in the directory. For other paths, it serves the
-// requested file directly.
-//
-// The JSON response for the root path includes an array of FSInfo objects with the following
-// properties for each file:
-//   - Name: The name of the file
-//   - Path: URL-escaped path to access the file, prefixed with "/"
-//   - Size: File size in bytes
-//   - Type: MIME type (determined by file extension) or extension name if MIME type is unknown
-//   - ModTime: Last modification time of the file
-//
+// indexFilesHandler creates an HTTP handler that serves file indexes for Server.FilePaths.
+// it returns a JSON-formatted directory listings.
 // If an error occurs while reading the directory or generating the JSON response,
 // an error response will be returned using serverErrorResponse.
-func (s *Server) JsonFileServer(dir string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		s.ActiveDowns++
-		s.mu.Unlock()
-		defer func() {
-			s.mu.Lock()
-			s.ActiveDowns--
-			s.mu.Unlock()
-		}()
-		entries, err := os.ReadDir(dir)
-		if r.URL.Path != "/" { // that means user is accessing some file
-			http.ServeFile(w, r, path.Join(dir, path.Clean(r.URL.Path)))
-			return
-		}
-		var fsInfos []domain.FileInfo
-		for _, entry := range entries {
-			// only host files
-			if entry.IsDir() {
-				continue
-			}
-			var finfo os.FileInfo
-			finfo, err = entry.Info()
-			fsInfo := domain.FileInfo{
-				Name:    entry.Name(),
-				Path:    path.Join("/", url.PathEscape(entry.Name())),
-				Size:    finfo.Size(),
-				Type:    strings.TrimPrefix(filepath.Ext(entry.Name()), "."),
-				ModTime: finfo.ModTime(),
-			}
-			fsInfos = append(fsInfos, fsInfo)
-		}
-		if err = s.writeJSON(w, envelop{"directoryIndex": fsInfos}, http.StatusOK, nil); err != nil {
+func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
+	var fsInfos []domain.FileInfo
+	for k, v := range s.FilePaths {
+		stat, err := os.Lstat(v)
+		if err != nil {
 			s.serverErrorResponse(w, r, err)
 			return
 		}
-	})
+		fsInfo := domain.FileInfo{
+			AccessID: k,
+			Name:     stat.Name(),
+			Size:     stat.Size(),
+			Type:     strings.TrimPrefix(filepath.Ext(stat.Name()), "."),
+		}
+		fsInfos = append(fsInfos, fsInfo)
+	}
+	if err := s.writeJSON(w, envelop{"fileIndexes": fsInfos}, http.StatusOK, nil); err != nil {
+		s.serverErrorResponse(w, r, err)
+	}
+}
+
+func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
+	accessID := r.PathValue("id")
+	filePath, ok := s.FilePaths[accessID]
+	if !ok {
+		s.notFoundResponse(w, r)
+		return
+	}
+	filename := filepath.Base(filePath)
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	http.ServeFile(w, r, filePath)
 }
 
 // Stop handles HTTP requests to stop the server.

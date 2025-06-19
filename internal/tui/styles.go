@@ -10,8 +10,7 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 
 	bgColor               = lipgloss.AdaptiveColor{Light: "#fbf1c7", Dark: "#282828"}
 	fgColor               = lipgloss.AdaptiveColor{Light: "#282828", Dark: "#fbf1c7"}
-	redColor              = lipgloss.AdaptiveColor{Light: "#cc241d", Dark: "#cc241d"}
-	redBrightColor        = lipgloss.AdaptiveColor{Light: "#9d0006", Dark: "#fb4934"}
+	redColor              = lipgloss.AdaptiveColor{Light: "#9d0006", Dark: "#fb4934"}
 	greenColor            = lipgloss.AdaptiveColor{Light: "#5f7a3d", Dark: "#D7FF87"}
 	yellowColor           = lipgloss.AdaptiveColor{Light: "#b57614", Dark: "#fabd2f"}
 	blueColor             = lipgloss.AdaptiveColor{Light: "#076678", Dark: "#458588"}
@@ -19,8 +18,7 @@ var ( // color scheme from https://github.com/morhetz/gruvbox
 	highlightColor        = lipgloss.AdaptiveColor{Light: "#4e562a", Dark: "#ECFD65"}
 	midHighlightColor     = lipgloss.AdaptiveColor{Light: "#9DA947", Dark: "#9DA947"}
 	subduedHighlightColor = lipgloss.AdaptiveColor{Light: "#ECFD65", Dark: "#4e562a"}
-	grayColor             = lipgloss.AdaptiveColor{Light: "#7c6f64", Dark: "#928374"}
-	subduedGrayColor      = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#444444"}
+	grayColor             = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#444444"}
 	orangeColor           = lipgloss.AdaptiveColor{Light: "#af3a03", Dark: "#d65d0e"}
 
 	generateGradient = func(base, target lipgloss.AdaptiveColor, steps int) []lipgloss.AdaptiveColor {
@@ -57,7 +55,7 @@ var ( // Container width calculations
 	}
 
 	smallContainerW = func() int {
-		w := (workableW() * 25) / 100
+		w := (workableW() * 26) / 100
 		w -= smallContainerStyle.GetHorizontalFrameSize()
 		return max(0, w)
 	}
@@ -76,7 +74,7 @@ var ( // Container width calculations
 var ( // Common Styles
 
 	titleStyle = lipgloss.NewStyle().
-			Background(subduedGrayColor).
+			Background(grayColor).
 			Foreground(highlightColor).
 			Italic(true).
 			Height(1).
@@ -97,7 +95,7 @@ var ( // dirNavModel Styles
 
 )
 
-var ( // sendModel Styles
+var ( // processFilesModel Styles
 	zipLogsContainerStyle = lipgloss.NewStyle().
 		Padding(1, 0)
 )
@@ -187,7 +185,7 @@ var ( // prepSelModel Styles
 				Italic(true)
 
 	preferenceQueBtnStyle = lipgloss.NewStyle().
-				Background(subduedGrayColor).
+				Background(grayColor).
 				Foreground(fgColor).
 				Padding(0, 1).
 				MarginRight(1)
@@ -206,26 +204,26 @@ var ( // prepSelModel Styles
 						BorderForeground(highlightColor)
 )
 
-var ( // confirmDialogModel Styles
+var ( // alertDialogModel Styles
 
-	confirmDialogContainerStyle = lipgloss.NewStyle().
+	alertDialogContainerStyle = lipgloss.NewStyle().
 					BorderStyle(lipgloss.RoundedBorder()).
 					BorderForeground(highlightColor).
 					Padding(1, 2)
 
-	confirmDialogHeaderStyle = lipgloss.NewStyle().
-					Background(highlightColor).
-					Foreground(subduedHighlightColor).
-					Padding(0, 1).
-					Faint(true)
+	alertDialogHeaderStyle = lipgloss.NewStyle().
+				Background(highlightColor).
+				Foreground(subduedHighlightColor).
+				Padding(0, 1).
+				Faint(true)
 
-	confirmDialogBodyStyle = lipgloss.NewStyle().
+	alertDialogBodyStyle = lipgloss.NewStyle().
 				Italic(true).
 				Padding(1, 0).
 				Foreground(highlightColor)
 
-	confirmDialogBtnStyle = lipgloss.NewStyle().
-				Background(subduedGrayColor).
+	alertDialogBtnStyle = lipgloss.NewStyle().
+				Background(grayColor).
 				Foreground(fgColor).
 				Padding(0, 2).
 				MarginLeft(1)
