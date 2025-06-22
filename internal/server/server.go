@@ -27,40 +27,30 @@ var ErrNonIdle = errors.New("server is not idle (serving files)")
 type Server struct {
 	// file paths to be served, [K: accessID, V: filepath]
 	FilePaths map[string]string
+
+	mu *sync.Mutex
 	// Once Done, the server will exit
 	StopCtx context.Context
 	// Cancel func for StopCtx
 	StopCtxCancel context.CancelFunc
-	mu            *sync.Mutex
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
 	// notifyCh is used to notify for the server shutdown request when ActiveDowns > 0
 	notifyCh chan string // X-Requested-By header value
+
 	// Option to let others on the same LAN to stopHandler this instance from hosting
 	Stoppable bool
 }
 
-func New() *Server {
+func New(stoppable bool) *Server {
 	ctx, cancel := context.WithCancel(bgtask.Get().ShutdownCtx())
 	return &Server{
 		FilePaths:     make(map[string]string),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),
-		ActiveDowns:   1,
-		Stoppable:     true,
+		Stoppable:     stoppable,
 	}
-}
-
-// SetFilePaths sets the file paths to be served by the server.
-func (s *Server) SetFilePaths(filePaths ...string) error {
-	for _, p := range filePaths {
-		randBytes := make([]byte, 3)
-		_, _ = rand.Read(randBytes)
-		id := hex.EncodeToString(randBytes)
-		s.FilePaths[id] = p
-	}
-	return nil
 }
 
 // StartServer starts an HTTP server that serves files from Server.FilePaths.
@@ -78,7 +68,7 @@ func (s *Server) SetFilePaths(filePaths ...string) error {
 // Note:
 //   - Uses GetOutboundIP() to determine the IP address for binding.
 //   - Will wait up to 5 seconds for server shutdown & 5 seconds for background tasks.
-func (s *Server) StartServer() error {
+func (s *Server) StartServer(filePaths ...string) error {
 	ipAddr, err := network.GetOutboundIP()
 	if err != nil {
 		return err
@@ -94,7 +84,7 @@ func (s *Server) StartServer() error {
 		IdleTimeout:       10 * time.Second,
 		Handler:           s.routes(),
 	}
-
+	s.setFilePaths(filePaths...)
 	errChan := s.listenAndShutdown(server)
 	slog.Info("Starting Server", "address", server.Addr)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -107,6 +97,8 @@ func (s *Server) StartServer() error {
 }
 
 func (s *Server) ShutdownServer(force bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.ActiveDowns == 0 || force {
 		s.StopCtxCancel()
 		return nil
@@ -115,6 +107,8 @@ func (s *Server) ShutdownServer(force bool) error {
 }
 
 func (s *Server) NotifyForShutdownReqWhenNotIdle(ch chan string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.notifyCh = ch
 }
 
@@ -156,6 +150,16 @@ func (s *Server) ownerNameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// setFilePaths sets the file paths to be served by the server.
+func (s *Server) setFilePaths(filePaths ...string) {
+	for _, p := range filePaths {
+		randBytes := make([]byte, 3)
+		_, _ = rand.Read(randBytes)
+		id := hex.EncodeToString(randBytes)
+		s.FilePaths[id] = p
+	}
+}
+
 // indexFilesHandler creates an HTTP handler that serves file indexes for Server.FilePaths.
 // it returns a JSON-formatted directory listings.
 // If an error occurs while reading the directory or generating the JSON response,
@@ -182,6 +186,10 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.ActiveDowns++
+	s.mu.Unlock()
+
 	accessID := r.PathValue("id")
 	filePath, ok := s.FilePaths[accessID]
 	if !ok {
@@ -191,6 +199,10 @@ func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 	filename := filepath.Base(filePath)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	http.ServeFile(w, r, filePath)
+
+	s.mu.Lock()
+	s.ActiveDowns--
+	s.mu.Unlock()
 }
 
 // stopHandler handles HTTP requests to shut down the server.
@@ -201,8 +213,9 @@ func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 // - Error: When the server is not stoppable or is currently serving files
 func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	c := s.ActiveDowns
-	s.mu.Unlock()
 	if s.Stoppable {
 		if c == 0 {
 			s.StopCtxCancel()
@@ -212,13 +225,12 @@ func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		s.mu.Lock()
+
 		if s.notifyCh != nil {
 			s.notifyCh <- r.Header.Get("X-Requested-By")
 			close(s.notifyCh)
 			s.notifyCh = nil
 		}
-		s.mu.Unlock()
 		s.notIdleResponse(w, r)
 		return
 	}
