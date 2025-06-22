@@ -9,6 +9,6 @@ type FileInfo struct {
 	Size int64 `json:"size,omitempty"`
 }
 
-func PopulateFileInfo(filepath string, size int64) FileInfo {
-	return FileInfo{}
+type Client struct {
+	Username string `json:"username,omitzero"`
 }

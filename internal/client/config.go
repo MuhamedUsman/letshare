@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/BurntSushi/toml"
+	"github.com/MuhamedUsman/letshare/internal/cfg"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 const (
 	appConfDir  = ".letshare"
+	testConfDir = ".test"
 	appConfFile = "config.toml"
 )
 
@@ -140,12 +142,15 @@ func defaultConfig() (Config, error) {
 }
 
 func getUserConfigFile() (*os.File, error) {
-	dir, err := os.UserConfigDir()
+	d, err := os.UserConfigDir()
 	if err != nil {
 		return nil, fmt.Errorf("user config directory look-up: %w", err)
 	}
 
-	path := filepath.Join(dir, appConfDir, appConfFile)
+	path := filepath.Join(d, appConfDir, appConfFile)
+	if cfg.TestFlag {
+		path = filepath.Join(d, testConfDir, appConfFile)
+	}
 	var f *os.File
 	if f, err = os.Open(path); err != nil {
 		return nil, fmt.Errorf("opening app config file: %w", err)
@@ -154,12 +159,15 @@ func getUserConfigFile() (*os.File, error) {
 }
 
 func createConfigFile() (*os.File, error) {
-	ucd, err := os.UserConfigDir()
+	d, err := os.UserConfigDir()
 	if err != nil {
 		return nil, fmt.Errorf("user config directory look-up: %v", err)
 	}
 
-	path := filepath.Join(ucd, appConfDir)
+	path := filepath.Join(d, appConfDir)
+	if cfg.TestFlag {
+		path = filepath.Join(d, testConfDir)
+	}
 	if err = os.MkdirAll(path, 0o700); err != nil {
 		return nil, fmt.Errorf("creating app config directory: %w", err)
 	}

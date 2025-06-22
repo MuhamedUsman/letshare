@@ -2,28 +2,45 @@ package mdns
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/cfg"
+	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/brutella/dnssd"
 	"github.com/brutella/dnssd/log"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
 	"sync"
+	"time"
 )
 
 const (
 	DefaultInstance = "letshare"
-	mdnsService     = "_http._tcp"
+	// UsernameKey used to store the username of the service owner in mDNS TXT records
+	UsernameKey = "username"
+	mdnsService = "_http._tcp"
+	domain      = "local."
 )
 
 var (
-	defaultOwnerKey = "defaultOwner"
-	once            = new(sync.Once)
-	mdns            *MDNS
+	ErrNotFound      = errors.New("mdns instance not found")
+	ErrInstanceOwned = errors.New("mdns instance already owned")
+
+	once sync.Once
+	mdns *MDNS
 )
+
+func init() {
+	log.Info.Disable()
+}
 
 // ServiceEntry represents a discovered mDNS service with its network details.
 type ServiceEntry struct {
-	Hostname, IP string
-	Port         int
+	Owner, Hostname, IP string
+	Port                int
 }
 
 // ServiceEntries represents discovered mDNS services where:
@@ -34,13 +51,12 @@ type ServiceEntries map[string]ServiceEntry
 // MDNS handles multicast DNS service registration and discovery on local networks.
 // It provides methods to publish services and discover other services on the network.
 type MDNS struct {
+	// Channel to signal updates or changes
+	notifyCh chan struct{}
+	// Mutex to protect access to entries and defaultOwner
 	mu sync.RWMutex
 	// Stores discovered mDNS entries
 	entries ServiceEntries
-	// name of the user currently occupying the default instance
-	defaultOwner string
-	// Channel to signal updates or changes
-	notifyCh chan struct{}
 }
 
 // Get creates and returns a new MDNS instance.
@@ -63,17 +79,29 @@ func Get() *MDNS {
 // Parameters:
 //   - ctx: Context that controls the service advertisement lifetime
 //   - instance: The service instance name (visible to other devices)
-//   - Hostname: The Hostname of the device providing the service
+//   - host: The Hostname of the device providing the service
+//   - username: username of the instance's Owner
 //   - Port: The Port number on which the service is available
 //
 // Returns an error if service registration fails.
-func (r *MDNS) Publish(ctx context.Context, instance, host string, username string, port int) error {
+func (r *MDNS) Publish(ctx context.Context, instance, host, username string, port int) error {
+
+	if cfg.TestFlag {
+		port = 8080
+	}
+
+	ip, err := network.GetOutboundIP()
+	if err != nil {
+		return err
+	}
+
 	cfg := dnssd.Config{
 		Name: instance,
 		Type: mdnsService,
 		Host: host,
 		Port: port,
-		Text: map[string]string{defaultOwnerKey: username},
+		IPs:  []net.IP{ip},
+		Text: map[string]string{UsernameKey: username},
 	}
 	sv, err := dnssd.NewService(cfg)
 	if err != nil {
@@ -93,17 +121,25 @@ func (r *MDNS) Publish(ctx context.Context, instance, host string, username stri
 	go func() {
 		<-ctx.Done()
 		rp.Remove(hdl)
+		if err := r.triggerRefresh(); err != nil {
+			slog.Error("Error refreshing mdns service", "err", err)
+		}
 	}()
-
-	// if it's the default instance, store the owner
-	if instance == DefaultInstance {
-		r.mu.Lock()
-		r.defaultOwner = instance
-		r.mu.Unlock()
-	}
 
 	if err = rp.Respond(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("responding to mdns requests: %v", err)
+	}
+	return nil
+}
+
+func (r *MDNS) triggerRefresh() error {
+	addFunc := dnssd.AddFunc(func(e dnssd.BrowseEntry) {})
+	rvmFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {})
+	service := fmt.Sprintf("%s.%s", mdnsService, domain)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := dnssd.LookupType(ctx, service, addFunc, rvmFunc); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("triggring refresh: %v", err)
 	}
 	return nil
 }
@@ -114,43 +150,46 @@ func (r *MDNS) Publish(ctx context.Context, instance, host string, username stri
 //
 // Parameters:
 //   - ctx: Context that controls the discovery process lifetime
-//   - service: The service type to discover (e.g., "_http._tcp.local.")
 //
 // Returns an error if the discovery process fails to start.
 func (r *MDNS) Discover(ctx context.Context) error {
 	addFunc := dnssd.AddFunc(func(e dnssd.BrowseEntry) {
+		owner := e.Text[UsernameKey]
+
+		if owner == "" { // get the username by an http call
+			addr := fmt.Sprintf("%s:%d", e.IPs[0].To4().String(), e.Port)
+			var err error
+			owner, err = getOwner(addr)
+			if err != nil {
+				slog.Error("error getting owner name", "err", err)
+			}
+		}
+
 		r.mu.Lock()
 		defer r.mu.Unlock()
+
 		r.entries[e.Name] = ServiceEntry{
+			Owner:    owner,
 			Hostname: e.Host,
 			IP:       e.IPs[0].To4().String(), // Assuming the first IP is the primary one
 			Port:     e.Port,
 		}
 
-		// If this is the default instance, update the owner
-		if e.Name == DefaultInstance {
-			r.defaultOwner = e.Text[defaultOwnerKey]
-		}
-
 		if r.notifyCh != nil {
 			close(r.notifyCh)
 		}
+
 	})
 	rmvFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		delete(r.entries, e.Name)
-
-		// If the default instance is removed, clear the owner
-		if e.Name == DefaultInstance {
-			r.defaultOwner = ""
-		}
-
 		if r.notifyCh != nil {
 			close(r.notifyCh)
 		}
+
 	})
-	service := fmt.Sprintf("%s.local.", mdnsService)
+	service := fmt.Sprintf("%s.%s", mdnsService, domain)
 	return dnssd.LookupType(ctx, service, addFunc, rmvFunc)
 }
 
@@ -158,22 +197,42 @@ func (r *MDNS) Discover(ctx context.Context) error {
 func (r *MDNS) NotifyOnChange() {
 	r.notifyCh = make(chan struct{})
 	<-r.notifyCh
+	r.notifyCh = nil
 }
 
 // Entries returns a copy of all currently discovered mDNS services.
 // This method is safe for concurrent use from multiple goroutines.
 //
 // Returns:
-//   - ServiceEntries: A map of service instance names to their network details
+//   - ServiceEntries: A map of service instance names to their network details(ServiceEntry).
 func (r *MDNS) Entries() ServiceEntries {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.entries
 }
 
-// DefaultOwner returns the username of the owner of the default instance.
-func (r *MDNS) DefaultOwner() string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.defaultOwner
+func getOwner(addr string) (string, error) {
+	c := http.Client{Timeout: 2 * time.Second}
+	addr = fmt.Sprintf("http://%s/owner", addr)
+	resp, err := c.Get(addr)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %v", err)
+	}
+
+	var ownerName struct {
+		Username string `json:"username"`
+	}
+	if err = json.Unmarshal(b, &ownerName); err != nil {
+		return "", fmt.Errorf("parsing response: %v", err)
+	}
+	return ownerName.Username, nil
 }

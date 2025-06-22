@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/server"
 	"github.com/MuhamedUsman/letshare/internal/util"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"log/slog"
 	"os"
 )
@@ -19,7 +19,7 @@ func main() {
 	// Publishing DNS Entry
 	bgtask.Get().Run(func(shutdownCtx context.Context) {
 		slog.Info("Publishing Multicast DNS Entry", "instance", instance)
-		if err := m.Publish(shutdownCtx, instance, instance, 80); err != nil {
+		if err := m.Publish(shutdownCtx, instance, instance, "Usman", 80); err != nil {
 			slog.Error(err.Error())
 		}
 	})

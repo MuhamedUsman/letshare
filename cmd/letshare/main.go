@@ -3,16 +3,18 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lmittmann/tint"
-	"log"
 	"log/slog"
 	"os"
 	"time"
 )
+
+func init() {
+}
 
 func main() {
 	f, err := tea.LogToFile("Letshare.log", "Letshare")
@@ -25,21 +27,22 @@ func main() {
 	h := tint.NewHandler(f, &tint.Options{TimeFormat: time.Kitchen})
 	slog.SetDefault(slog.New(h))
 
-	// mdns discovery
 	bgtask.Get().Run(func(shutdownCtx context.Context) {
 		if err = mdns.Get().Discover(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
-			log.Fatal(err)
+			println()
+			slog.Error("Error discovering mDNS services", "err", err)
+			os.Exit(1)
 		}
 	})
 
+	finalErrCh := make(chan error, 1)
 	_, err = tea.NewProgram(
-		tui.InitialMainModel(),
+		tui.InitialMainModel(finalErrCh),
 		tea.WithAltScreen(),
 		tea.WithoutBracketedPaste(),
 	).Run()
 	if err != nil {
-		println()
+		err = <-finalErrCh
 		slog.Error(err.Error())
-		os.Exit(1)
 	}
 }

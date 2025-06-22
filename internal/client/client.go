@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,14 +17,14 @@ const (
 )
 
 type Client struct {
-	mdns *mdns.MDNS
 	http *http.Client
+	mdns *mdns.MDNS
 }
 
 func New() *Client {
 	return &Client{
-		mdns: mdns.Get(),
 		http: &http.Client{Timeout: 2 * time.Second}, // same network, low latency expected
+		mdns: mdns.Get(),
 	}
 }
 
@@ -35,13 +34,26 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, error) {
 	if !ok {
 		return nil, fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
-	resp, err := c.http.Get("http://" + entry.IP)
+
+	addr := fmt.Sprintf("http://%s:%d", entry.IP, entry.Port)
+	uname, err := c.getClientUsername()
+	if err != nil {
+		return nil, fmt.Errorf("getting client username: %v", err)
+	}
+
+	req, err := http.NewRequest("GET", addr, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %v", err)
+	}
+	req.Header.Set("X-Requested-By", uname)
+
+	resp, err := c.http.Do(req)
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
-			return nil, fmt.Errorf("directory indexing: request timed out")
+			return nil, fmt.Errorf("indexing files: request timed out")
 		}
-		return nil, fmt.Errorf("requesting directory index: %v", err)
+		return nil, fmt.Errorf("indexing files: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -50,19 +62,17 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, error) {
 		return nil, fmt.Errorf("server returned status %d while indexing directory", resp.StatusCode)
 	}
 
-	bytes, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading directory index response: %v", err)
 	}
 
-	var dir struct {
-		Indexes []*domain.FileInfo `json:"directoryIndex"`
-	}
-	if err = json.Unmarshal(bytes, &dir); err != nil {
+	var r map[string][]*domain.FileInfo
+	if err = json.Unmarshal(b, &r); err != nil {
 		return nil, fmt.Errorf("parsing directory index JSON: %v", err)
 	}
 
-	return dir.Indexes, nil
+	return r["fileIndexes"], nil
 }
 
 func (c *Client) StopServer(instance string) (int, error) {
@@ -71,7 +81,20 @@ func (c *Client) StopServer(instance string) (int, error) {
 	if !ok {
 		return -1, fmt.Errorf("instance %q not found in mDNS entries", instance)
 	}
-	resp, err := c.http.Post("http://"+entry.Hostname+stop, "application/json", new(bytes.Buffer))
+
+	addr := fmt.Sprintf("http://%s:%d%s", entry.IP, entry.Port, stop)
+	uname, err := c.getClientUsername()
+	if err != nil {
+		return -1, fmt.Errorf("getting client username: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, addr, nil)
+	if err != nil {
+		return -1, fmt.Errorf("creating request: %v", err)
+	}
+	req.Header.Set("X-Requested-By", uname)
+	resp, err := c.http.Do(req)
+
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
@@ -80,11 +103,11 @@ func (c *Client) StopServer(instance string) (int, error) {
 		return -1, fmt.Errorf("stopping server: %v", err)
 	}
 	defer resp.Body.Close()
-	bytes, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	var response struct {
 		Status string `json:"status"`
 	}
-	if err = json.Unmarshal(bytes, &response); err != nil {
+	if err = json.Unmarshal(b, &response); err != nil {
 		return -1, fmt.Errorf("parsing server response while stopping: %v", err)
 	}
 	if resp.StatusCode != http.StatusAccepted &&
@@ -93,4 +116,12 @@ func (c *Client) StopServer(instance string) (int, error) {
 		return resp.StatusCode, fmt.Errorf("server returned status %d while stopping server", resp.StatusCode)
 	}
 	return resp.StatusCode, nil
+}
+
+func (c *Client) getClientUsername() (string, error) {
+	conf, err := LoadConfig()
+	if err != nil {
+		return "", err
+	}
+	return conf.Personal.Username, nil
 }

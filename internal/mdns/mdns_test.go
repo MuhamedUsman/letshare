@@ -11,6 +11,7 @@ func TestMDNSDiscoveryAndPublication(t *testing.T) {
 	m := Get()
 	instance := "TestInstance"
 	host := "TestHost"
+	username := "TestUsername"
 
 	slog.SetLogLoggerLevel(slog.LevelWarn)
 
@@ -19,7 +20,7 @@ func TestMDNSDiscoveryAndPublication(t *testing.T) {
 
 	// Start publishing in background
 	go func() {
-		if err := m.Publish(ctx, instance, host, 80); err != nil {
+		if err := m.Publish(ctx, instance, host, username, 80); err != nil {
 			t.Error(err)
 			return
 		}

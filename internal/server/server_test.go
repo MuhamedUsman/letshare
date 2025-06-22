@@ -82,7 +82,7 @@ func TestSrvDir(t *testing.T) {
 		}
 	}
 
-	server := httptest.NewServer(s.Routes(tempDir))
+	server := httptest.NewServer(s.routes(tempDir))
 	defer server.Close()
 
 	// Test directory listing
@@ -132,7 +132,7 @@ func TestServer_Stop(t *testing.T) {
 
 			// Create a ResponseRecorder to record the response
 			rr := httptest.NewRecorder()
-			handler := http.HandlerFunc(server.Stop)
+			handler := http.HandlerFunc(server.stopHandler)
 			// Call the handler
 			handler.ServeHTTP(rr, req)
 
@@ -164,7 +164,7 @@ func TestServer_Stop(t *testing.T) {
 				case <-ctx2.Done():
 					// Context was canceled, which is expected
 				default:
-					t.Errorf("Stop did not cancel the context")
+					t.Errorf("stopHandler did not cancel the context")
 				}
 
 				// Check response status
