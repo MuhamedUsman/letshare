@@ -88,7 +88,6 @@ func initialSendModel() sendModel {
 	t.PlaceholderStyle = t.PlaceholderStyle.Foreground(subduedHighlightColor)
 
 	return sendModel{
-		server:        server.New(),
 		client:        client.New(),
 		mdns:          mdns.Get(),
 		titleStyle:    titleStyle.Margin(0, 2),
@@ -135,7 +134,9 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			if !m.isSelected {
 				m.isSelected = true
 				m.selected = m.btnIdx
-				m.customInstance = m.getConfig().Share.InstanceName
+				conf := m.getConfig()
+				m.customInstance = conf.Share.InstanceName
+				m.server = server.New(conf.Share.StoppableInstance)
 				return m, m.publishInstanceAndStartServer()
 			}
 
@@ -171,7 +172,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 	case sendFilesMsg:
 		m.files = msg
-		_ = m.server.SetFilePaths(m.files...)
 
 	case instanceServingMsg:
 		m.isServing = true
@@ -179,7 +179,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 	case instanceShutdownMsg:
 		m.isSelected, m.isServing = false, false
 		m.instanceState = idle
-		m.server = server.New()
 
 	case shutdownReqWhenNotIdleMsg:
 		return m, tea.Batch(m.notifyForShutdownReqWhenNotIdle(), m.showShutdownReqWhenNotIdleAlert(string(msg)))
@@ -197,6 +196,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			m.isSelected = false
 		case available:
 			m.isSelected = true
+			m.server = server.New(m.getConfig().Share.StoppableInstance)
 			return m, m.publishInstanceAndStartServer()
 		case notResponding:
 			m.isSelected = false
@@ -509,7 +509,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 	cmds[1] = func() tea.Msg {
 		var err error
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
-			err = m.server.StartServer()
+			err = m.server.StartServer(m.files...)
 		})
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return errMsg{err: err, fatal: true}

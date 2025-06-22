@@ -50,6 +50,7 @@ type preferenceKey int
 const (
 	username preferenceKey = iota
 	instanceName
+	stoppableInstance
 	zipFiles
 	compression
 	sharedZipName
@@ -59,6 +60,7 @@ const (
 var prefKeyNames = []string{
 	"USERNAME",
 	"INSTANCE NAME",
+	"STOPPABLE INSTANCE",
 	"ZIP FILES?",
 	"COMPRESSED ZIP?",
 	"SHARED ZIP NAME",
@@ -517,6 +519,8 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Personal.Username
 		case instanceName:
 			m.preferenceQues[i].input = cfg.Share.InstanceName
+		case stoppableInstance:
+			m.preferenceQues[i].check = cfg.Share.StoppableInstance
 		case zipFiles:
 			m.preferenceQues[i].check = cfg.Share.ZipFiles
 		case compression:
@@ -544,6 +548,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 			cfg.Personal.Username = q.input
 		case instanceName:
 			cfg.Share.InstanceName = q.input
+		case stoppableInstance:
+			cfg.Share.StoppableInstance = q.check
 		case zipFiles:
 			cfg.Share.ZipFiles = q.check
 		case compression:
@@ -578,6 +584,8 @@ func (m preferenceModel) isUnsavedState() bool {
 			unsaved = q.input != cfg.Personal.Username
 		case instanceName:
 			unsaved = q.input != cfg.Share.InstanceName
+		case stoppableInstance:
+			unsaved = q.check != cfg.Share.StoppableInstance
 		case zipFiles:
 			unsaved = q.check != cfg.Share.ZipFiles
 		case compression:
@@ -652,6 +660,13 @@ func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
 			pType:  input,
 			pSec:   share,
 			input:  cfg.Share.InstanceName,
+		},
+		{
+			title: stoppableInstance,
+			desc:  "Allow others on the same LAN to shutdown your server instance when no downloads are active.",
+			pType: option,
+			pSec:  share,
+			check: cfg.Share.StoppableInstance,
 		},
 		{
 			title: zipFiles,

@@ -26,10 +26,11 @@ type PersonalConfig struct {
 }
 
 type ShareConfig struct {
-	InstanceName  string `toml:"instance_name"`
-	ZipFiles      bool   `toml:"zip_files"`
-	Compression   bool   `toml:"compression"`
-	SharedZipName string `toml:"shared_zip_name"`
+	InstanceName      string `toml:"instance_name"`
+	StoppableInstance bool   `toml:"stoppable_instance"`
+	ZipFiles          bool   `toml:"zip_files"`
+	Compression       bool   `toml:"compression"`
+	SharedZipName     string `toml:"shared_zip_name"`
 }
 
 type ReceiveConfig struct {
@@ -130,9 +131,10 @@ func defaultConfig() (Config, error) {
 			Username: hostname,
 		},
 		Share: ShareConfig{
-			InstanceName:  hostname,
-			ZipFiles:      false,
-			SharedZipName: "shared.zip",
+			InstanceName:      hostname,
+			StoppableInstance: true,
+			ZipFiles:          false,
+			SharedZipName:     "shared.zip",
 		},
 		Receive: ReceiveConfig{
 			DownloadFolder: downPath,
