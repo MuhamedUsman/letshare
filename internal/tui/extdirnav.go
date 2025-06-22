@@ -423,6 +423,8 @@ func (m *extDirNavModel) selectAll(selection bool) {
 
 func (m *extDirNavModel) selectSingle(selection bool) {
 	sel := m.extDirTable.Cursor()
+	// ensure sel is not negative, panic occurred in testing, but I am not setting the cursor to -1
+	sel = max(0, sel)
 	if m.filterState != unfiltered {
 		sel = m.dirContents.filteredContents[sel]
 	}

@@ -20,8 +20,11 @@ const (
 type alertDialogMsg struct {
 	header, body string
 	// which btn to be active
-	positiveBtnTxt, negativeBtnTxt      string
-	cursor                              alertCursor
+	positiveBtnTxt, negativeBtnTxt string
+	cursor                         alertCursor
+	// alertDuration is used to set the timer for the alert dialog
+	// takes effect only if positiveBtnTxt and negativeBtnTxt are nil
+	alertDuration                       time.Duration
 	positiveFunc, negativeFunc, escFunc func() tea.Cmd
 }
 
@@ -48,7 +51,7 @@ type alertDialogModel struct {
 
 func initialAlertDialogModel() alertDialogModel {
 	return alertDialogModel{
-		cursor: 1,
+		cursor: positive,
 		timer:  timer.NewWithInterval(5*time.Second, 100*time.Millisecond),
 	}
 }
@@ -118,6 +121,11 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 		currentFocus = confirmation
 		// in this case, the dialog is just a simple alert, then start timer
 		if m.isTimerAlert() {
+			d := 5 * time.Second // default
+			if msg.alertDuration > 0 {
+				d = msg.alertDuration
+			}
+			m.timer = timer.NewWithInterval(d, 100*time.Millisecond)
 			return m, tea.Batch(m.timer.Init(), spaceFocusSwitchCmd)
 		}
 		return m, spaceFocusSwitchCmd
@@ -130,9 +138,6 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 		}
 
 	case timer.TimeoutMsg:
-		if msg.ID == m.timer.ID() {
-			m.timer = timer.NewWithInterval(5*time.Second, 100*time.Millisecond)
-		}
 		var cmd tea.Cmd
 		if m.escFunc != nil {
 			cmd = m.escFunc()

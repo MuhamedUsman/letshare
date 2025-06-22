@@ -93,6 +93,16 @@ func (f sendFilesMsg) cmd() tea.Msg {
 	return f
 }
 
-func instanceStateCmd(s instanceState) tea.Cmd {
-	return func() tea.Msg { return s }
+type instanceServingMsg struct{}
+
+func instanceServingCmd() tea.Msg {
+	return instanceServingMsg{}
 }
+
+type instanceShutdownMsg struct{}
+
+func instanceShutdownCmd() tea.Msg {
+	return instanceShutdownMsg{}
+}
+
+type shutdownReqWhenNotIdleMsg string

@@ -1,12 +1,11 @@
 package tui
 
 import (
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"log/slog"
-	"os"
 	"time"
 )
 
@@ -43,19 +42,26 @@ type eventCapturer interface {
 	capturesKeyEvent(msg tea.KeyMsg) bool
 }
 
+type FinalErrCh chan<- error
+
 type MainModel struct {
 	localSpace     localSpaceModel
 	extensionSpace extensionSpaceModel
 	remoteSpace    remoteSpaceModel
 	confirmation   alertDialogModel
+	finalErrCh     FinalErrCh
 }
 
-func InitialMainModel() MainModel {
+// InitialMainModel initializes the main model
+// make sure to have FinalErrCh buffered by 1
+// and read from it when the main tea.Program has exited
+func InitialMainModel(ch FinalErrCh) MainModel {
 	return MainModel{
 		localSpace:     initialLocalSpaceModel(),
 		extensionSpace: initialExtensionSpaceModel(),
 		remoteSpace:    initialRemoteSpaceModel(),
 		confirmation:   initialAlertDialogModel(),
+		finalErrCh:     ch,
 	}
 }
 
@@ -128,13 +134,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		if msg.fatal {
-			println()
-			slog.Error(msg.err.Error())
-			os.Exit(1)
+			m.finalErrCh <- msg.err
+			close(m.finalErrCh)
+			return m, tea.Interrupt
 		}
 		return m, alertDialogMsg{header: msg.errHeader, body: msg.errStr}.cmd
 	}
-	
+
 	return m, m.handleChildModelUpdates(msg)
 }
 

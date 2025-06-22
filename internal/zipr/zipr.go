@@ -4,7 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"io"
 	"io/fs"
 	"os"

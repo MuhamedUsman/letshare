@@ -3,10 +3,11 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/client"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/server"
-	"github.com/MuhamedUsman/letshare/internal/util/bgtask"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,12 +16,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type instanceBtn int
 
 const (
-	defaultInstance instanceBtn = iota
+	noInstance instanceBtn = iota - 1 // no instance selected
+	defaultInstance
 	customInstance
 )
 
@@ -33,28 +36,45 @@ func (b instanceBtn) string() string {
 	return instanceBtnStr[b]
 }
 
-type instanceState int
+// requiredInstanceState indicates the state for the instance we want to use for our service
+// but is currently serving for someone else on the local network
+type requiredInstanceState int
 
 const (
-	idle instanceState = iota
+	// the instance became idle
+	idle requiredInstanceState = iota
+	// we're requesting the instance
 	requesting
-	owned
-	requestRejected
-	requestAccepted
+	// the instance is serving files and is not idle
+	// the owner will be notified for our request
 	serving
+	// the instance became available for us to use
+	available
+	// the owner doesn't allow the server to be shutdown by others
+	requestRejected
+	// the instance will start graceful shutdown
+	requestAccepted
+	// request timed out
+	notResponding
 )
 
+func instanceStateCmd(state requiredInstanceState) tea.Cmd {
+	return func() tea.Msg {
+		return state
+	}
+}
+
 type sendModel struct {
-	mdns                                *mdns.MDNS
-	server                              *server.Server
-	client                              *client.Client
-	files                               []string
-	customInstance                      string
-	titleStyle                          lipgloss.Style
-	txtInput                            textinput.Model
-	btnIdx                              instanceBtn
-	instanceState                       instanceState
-	isSelected, showHelp, disableKeymap bool
+	server                                         *server.Server
+	client                                         *client.Client
+	mdns                                           *mdns.MDNS
+	files                                          []string
+	customInstance                                 string
+	titleStyle                                     lipgloss.Style
+	txtInput                                       textinput.Model
+	btnIdx, selected                               instanceBtn
+	instanceState                                  requiredInstanceState
+	isSelected, isServing, showHelp, disableKeymap bool
 }
 
 func initialSendModel() sendModel {
@@ -68,10 +88,11 @@ func initialSendModel() sendModel {
 	t.PlaceholderStyle = t.PlaceholderStyle.Foreground(subduedHighlightColor)
 
 	return sendModel{
-		server:     server.New(),
-		client:     client.New(),
-		mdns:       mdns.Get(),
-		titleStyle: titleStyle.Margin(0, 2),
+		server:        server.New(),
+		client:        client.New(),
+		mdns:          mdns.Get(),
+		titleStyle:    titleStyle.Margin(0, 2),
+		disableKeymap: true, // initially dirNavModel will handle key events
 	}
 }
 
@@ -82,7 +103,7 @@ func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	case "esc":
 		return m.instanceState == idle && !m.disableKeymap
 	case "ctrl+c":
-		return m.instanceState == serving && !m.disableKeymap
+		return m.isServing && !m.disableKeymap
 	default:
 		return false
 	}
@@ -113,26 +134,23 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		case "enter":
 			if !m.isSelected {
 				m.isSelected = true
+				m.selected = m.btnIdx
 				m.customInstance = m.getConfig().Share.InstanceName
-				return m, m.startServer()
+				return m, m.publishInstanceAndStartServer()
 			}
 
 		case "Q", "q":
-			if m.instanceState == serving {
-				m.isSelected = false
-				m.instanceState = idle
-				return m, tea.Batch(localChildSwitchMsg{child: dirNav, focus: true}.cmd, m.shutdownServer(false))
+			if m.isServing {
+				return m, m.shutdownServer(false)
 			}
 
 		case "ctrl+c":
-			if m.instanceState == serving {
-				m.isSelected = false
-				m.instanceState = idle
-				return m, tea.Batch(m.shutdownServer(true))
+			if m.isServing {
+				return m, m.shutdownServer(true)
 			}
 
 		case "esc":
-			if m.instanceState == idle {
+			if !m.isServing {
 				return m, m.confirmEsc()
 			}
 
@@ -155,12 +173,45 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.files = msg
 		_ = m.server.SetFilePaths(m.files...)
 
-	case instanceState:
-		m.instanceState = msg
-		if m.instanceState == idle {
-			m.isSelected = false
+	case instanceServingMsg:
+		m.isServing = true
+
+	case instanceShutdownMsg:
+		m.isSelected, m.isServing = false, false
+		m.instanceState = idle
+		m.server = server.New()
+
+	case shutdownReqWhenNotIdleMsg:
+		return m, tea.Batch(m.notifyForShutdownReqWhenNotIdle(), m.showShutdownReqWhenNotIdleAlert(string(msg)))
+
+	case requiredInstanceState:
+		if m.isServing {
+			// if our instance is already serving, ignore the state change of required instance
+			return m, nil
 		}
 
+		m.instanceState = msg
+		switch msg {
+		case requesting:
+		case idle:
+			m.isSelected = false
+		case available:
+			m.isSelected = true
+			return m, m.publishInstanceAndStartServer()
+		case notResponding:
+			m.isSelected = false
+			m.instanceState = idle
+			return m, errMsg{
+				errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
+				errStr:    "Request failed, the server instance is not responding, it might be down.",
+				fatal:     false,
+			}.cmd
+		case requestRejected, serving:
+			m.isSelected = false
+			return m, m.notifyInstanceAvailability()
+		case requestAccepted:
+			return m, m.notifyInstanceAvailability()
+		}
 	}
 
 	return m, nil
@@ -182,7 +233,7 @@ func (m *sendModel) handleUpdate(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds[:]...)
 }
 
-func (m sendModel) updateKeymap(disable bool) {
+func (m *sendModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 }
 
@@ -238,9 +289,10 @@ func (m sendModel) renderInfoText() string {
 			s = baseStyle.Render("Private custom address, “http://" + m.customInstance + ".local”")
 		}
 		sb.WriteString(s)
+	case noInstance:
 	}
 
-	if m.instanceState != idle {
+	if m.instanceState != idle || m.isServing {
 		sb.WriteString("\n\n")
 		divider := strings.Repeat("—", max(0, smallContainerW()-6))
 		sb.WriteString(divider)
@@ -248,31 +300,26 @@ func (m sendModel) renderInfoText() string {
 		baseStyle = baseStyle.Foreground(highlightColor).Blink(true)
 	}
 
-	switch m.instanceState {
-	case idle:
-	case requesting:
-		sb.WriteString(baseStyle.Foreground(yellowColor).Render("Instance already owned, requesting shutdown..."))
-	case owned:
-		currentOwner := m.mdns.DefaultOwner()
-		sb.WriteString(baseStyle.Foreground(redColor).Render(
-			"The server instance is currently serving files for",
-			"“"+currentOwner+"”.",
-			"Either wait or switch instance.",
-		))
-	case requestAccepted:
-		sb.WriteString(baseStyle.Render("Shutting down the server instance, please wait..."))
-	case requestRejected:
-		currentOwner := m.mdns.DefaultOwner()
-		if m.btnIdx == customInstance {
-			currentOwner = "<ANONYMOUS HOST>"
+	if m.isServing {
+		sb.WriteString(baseStyle.UnsetBlink().Render("The server instance is up & running… Hit “Q/q” to shutdown."))
+	} else {
+		switch m.instanceState {
+		case idle, notResponding, available:
+		case requesting:
+			sb.WriteString(baseStyle.Foreground(yellowColor).Render("Instance already serving, requesting shutdown…"))
+		case serving:
+			currentOwner := m.getInstanceOwner(m.getInstance())
+			msg := fmt.Sprintf("Server is currently serving files for %q. They're notified of your request, Please either wait or switch instance.", currentOwner)
+			sb.WriteString(baseStyle.Foreground(redColor).Render(msg))
+		case requestAccepted:
+			currentOwner := m.getInstanceOwner(m.getInstance())
+			msg := fmt.Sprintf("Shutting down the server instance serving by %q please wait…", currentOwner)
+			sb.WriteString(baseStyle.Foreground(yellowColor).Render(msg))
+		case requestRejected:
+			currentOwner := m.getInstanceOwner(m.getInstance())
+			msg := fmt.Sprintf("Instance owner %q has blocked shutdown. Please either wait for availability or switch instance.", currentOwner)
+			sb.WriteString(baseStyle.Foreground(redColor).Render(msg))
 		}
-		sb.WriteString(baseStyle.Foreground(redColor).Render(
-			"“"+currentOwner+"”.",
-			"doesn't allow shutting down the server instance. Either wait or switch instance.",
-		))
-	case serving:
-		sb.WriteString(baseStyle.UnsetBlink().Render("The server instance is up & running!. Hit “Q/q” to shutdown."))
-
 	}
 
 	return lipgloss.NewStyle().
@@ -300,6 +347,7 @@ func (m sendModel) renderInstanceBtns() string {
 	customBtn := runewidth.Truncate(customInstance.string(), w, "…")
 
 	switch m.btnIdx {
+	case noInstance:
 	case defaultInstance:
 		defaultBtn = activeStyle.Render(defaultBtn)
 		customBtn = inactiveStyle.Render(customBtn)
@@ -315,6 +363,7 @@ func (m sendModel) renderInstanceBtns() string {
 func (m sendModel) renderSelectedInstanceHeader() string {
 	var s string
 	switch m.btnIdx {
+	case noInstance:
 	case defaultInstance:
 		s = "DEFAULT SERVER INSTANCE"
 	case customInstance:
@@ -335,7 +384,7 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 	header := "CANCEL SHARING?"
 	body := "This will delete all the processed files, and you'll return to file selection."
 	positiveFunc := func() tea.Cmd {
-		m.isSelected = false
+		m.isSelected, m.isServing = false, false
 		return localChildSwitchMsg{child: dirNav, focus: true}.cmd
 	}
 	return alertDialogMsg{
@@ -345,6 +394,15 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
+	}.cmd
+}
+
+func (m sendModel) showShutdownReqWhenNotIdleAlert(reqBy string) tea.Cmd {
+	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving files. Consider shutting down when idle.", reqBy)
+	return alertDialogMsg{
+		header:        "SHUTDOWN REQUEST",
+		body:          body,
+		alertDuration: 10 * time.Second,
 	}.cmd
 }
 
@@ -358,6 +416,7 @@ func customSendHelp(show bool) *lipTable.Table {
 			{"←/→ OR l/h", "switch button"},
 			{"enter", "select button"},
 			{"Q/q", "shutdown server"},
+			{"esc", "cancel sharing"},
 			{"?", "hide help"},
 		}
 	}
@@ -379,51 +438,86 @@ func customSendHelp(show bool) *lipTable.Table {
 
 func (m sendModel) getInstance() string {
 	cfg := m.getConfig()
-	switch m.btnIdx {
+	switch m.selected {
 	case defaultInstance:
 		return mdns.DefaultInstance
 	case customInstance:
 		return cfg.Share.InstanceName
+	default:
+		return ""
 	}
-	return ""
 }
 
-func (m sendModel) isInstanceAvailable() bool {
-	checkFor := m.getInstance()
-	_, ok := m.mdns.Entries()[checkFor]
+func (m sendModel) isInstanceAvailable(instance string) bool {
+	_, ok := m.mdns.Entries()[instance]
 	return !ok
 }
 
-func (m sendModel) startServer() tea.Cmd {
+func (m sendModel) getInstanceOwner(instance string) string {
+	return m.mdns.Entries()[instance].Owner
+}
+
+func (m sendModel) notifyInstanceAvailability() tea.Cmd {
 	instance := m.getInstance()
-	if !m.isInstanceAvailable() {
+	return func() tea.Msg {
+		for {
+			select {
+			case <-m.server.StopCtx.Done():
+				return nil // server stopped, exit the loop
+			default:
+				m.mdns.NotifyOnChange()
+				if m.isInstanceAvailable(instance) {
+					return available
+				}
+			}
+		}
+	}
+}
+
+func (m sendModel) notifyForShutdownReqWhenNotIdle() tea.Cmd {
+	return func() tea.Msg {
+		ch := make(chan string, 1) // client writes only once then closes the channel
+		m.server.NotifyForShutdownReqWhenNotIdle(ch)
+		select {
+		case reqBy := <-ch:
+			return shutdownReqWhenNotIdleMsg(reqBy)
+		case <-m.server.StopCtx.Done():
+		}
+		return nil
+	}
+}
+
+func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
+	instance := m.getInstance()
+	if !m.isInstanceAvailable(instance) {
 		return tea.Batch(instanceStateCmd(requesting), m.stopOwnedServerInstance(instance))
 	}
-	var cmds [3]tea.Cmd
+
+	var cmds [4]tea.Cmd
 	// publish the mdns service
 	cmds[0] = func() tea.Msg {
 		var err error
 		uname := m.getConfig().Personal.Username
-		bgtask.Get().RunAndBlock(func(shutdownCtx context.Context) {
+		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			err = m.mdns.Publish(m.server.StopCtx, instance, instance, uname, 80)
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
-			return errMsg{err: err, errStr: "Publish Fucked You Up!", fatal: false}
+			return errMsg{err: err, fatal: true}
 		}
 		return nil
 	}
 	cmds[1] = func() tea.Msg {
 		var err error
-		bgtask.Get().RunAndBlock(func(shutdownCtx context.Context) {
+		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			err = m.server.StartServer()
 		})
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return errMsg{err: err, fatal: false}
+			return errMsg{err: err, fatal: true}
 		}
-		return nil
+		return instanceShutdownMsg{}
 	}
-	cmds[2] = instanceStateCmd(serving)
-
+	cmds[2] = m.notifyForShutdownReqWhenNotIdle()
+	cmds[3] = instanceServingCmd
 	return tea.Batch(cmds[:]...)
 }
 
@@ -435,8 +529,7 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 				if quit {
 					return tea.Quit
 				}
-				m.server = server.New() // reset the server instance
-				return nil
+				return tea.Batch(instanceShutdownCmd, localChildSwitchMsg{child: dirNav, focus: true}.cmd)
 			}
 			return alertDialogMsg{
 				header:         "FORCE SHUTDOWN?",
@@ -450,51 +543,27 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 		if quit {
 			return tea.Quit()
 		}
-		m.server = server.New() // reset the server instance
-		return nil
-	}
-}
-
-func (m sendModel) waitForInstanceAndStartServer() tea.Cmd {
-	instance := m.getInstance()
-	return func() tea.Msg {
-		for {
-			select {
-			case <-m.server.StopCtx.Done():
-				return nil // server stopped, exit the loop
-			default:
-				m.mdns.NotifyOnChange()
-				_, ok := m.mdns.Entries()[instance]
-				if ok {
-					return m.startServer()
-				}
-			}
-		}
+		return instanceShutdownMsg{}
 	}
 }
 
 func (m *sendModel) stopOwnedServerInstance(instance string) tea.Cmd {
 	return func() tea.Msg {
-
 		statusCode, err := m.client.StopServer(instance)
 		if err != nil {
 			return tea.Batch(instanceStateCmd(idle), errMsg{err: err, fatal: false}.cmd)
 		}
 		switch statusCode {
 		case http.StatusAccepted:
-			return instanceStateCmd(requestAccepted)
+			return requestAccepted
 		case http.StatusForbidden:
-			return instanceStateCmd(requestRejected)
+			return requestRejected
 		case http.StatusConflict:
-			return instanceStateCmd(owned)
+			return serving
 		case http.StatusRequestTimeout:
-			return errMsg{
-				errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
-				errStr:    "Request failed, the server instance is not responding, it might be down.",
-				fatal:     false,
-			}
+			return notResponding
 		default:
-			return m.waitForInstanceAndStartServer()
+			return nil
 		}
 	}
 }

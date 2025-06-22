@@ -162,14 +162,16 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 			}
 
 		case " ": // child
-			selDir := m.dirList.SelectedItem().FilterValue()
-			selPath := filepath.Join(m.curDirPath, selDir)
-			// double spaceBar action is valid
-			if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
-				return m, extendDirMsg{selPath, true}.cmd
+			if m.dirList.FilterState() != list.Filtering {
+				selDir := m.dirList.SelectedItem().FilterValue()
+				selPath := filepath.Join(m.curDirPath, selDir)
+				// double spaceBar action is valid
+				if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
+					return m, extendDirMsg{selPath, true}.cmd
+				}
+				m.prevSelDir = selDir // registering first spaceBar action
+				return m, extendDirMsg{selPath, false}.cmd
 			}
-			m.prevSelDir = selDir // registering first spaceBar action
-			return m, extendDirMsg{selPath, false}.cmd
 
 		case "?":
 			m.showHelp = !m.showHelp

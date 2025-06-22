@@ -6,11 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
+	"github.com/MuhamedUsman/letshare/internal/cfg"
+	"github.com/MuhamedUsman/letshare/internal/client"
 	"github.com/MuhamedUsman/letshare/internal/domain"
+	"github.com/MuhamedUsman/letshare/internal/mdns"
+	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/justinas/alice"
-	"log"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,18 +34,20 @@ type Server struct {
 	mu            *sync.Mutex
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
-	// Option to let others on the same LAN to stop this instance from hosting
+	// notifyCh is used to notify for the server shutdown request when ActiveDowns > 0
+	notifyCh chan string // X-Requested-By header value
+	// Option to let others on the same LAN to stopHandler this instance from hosting
 	Stoppable bool
 }
 
 func New() *Server {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(bgtask.Get().ShutdownCtx())
 	return &Server{
 		FilePaths:     make(map[string]string),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
 		mu:            new(sync.Mutex),
-		ActiveDowns:   0,
+		ActiveDowns:   1,
 		Stoppable:     true,
 	}
 }
@@ -63,7 +68,7 @@ func (s *Server) SetFilePaths(filePaths ...string) error {
 // on context cancellation or OS termination signals (SIGINT, SIGTERM).
 //
 // The function sets up proper timeouts for read operations and idle connections.
-// The server Routes are configured through the Server.Routes method which should
+// The server routes are configured through the Server.routes method which should
 // handle serving files from the provided directory.
 //
 // Returns:
@@ -74,24 +79,29 @@ func (s *Server) SetFilePaths(filePaths ...string) error {
 //   - Uses GetOutboundIP() to determine the IP address for binding.
 //   - Will wait up to 5 seconds for server shutdown & 5 seconds for background tasks.
 func (s *Server) StartServer() error {
-	ipAddr, err := GetOutboundIP()
+	ipAddr, err := network.GetOutboundIP()
 	if err != nil {
-		log.Fatal(err)
+		return err
+	}
+	addr := fmt.Sprint(ipAddr.To4(), ":80")
+	if cfg.TestFlag {
+		addr = fmt.Sprint(ipAddr.To4(), ":8080")
 	}
 	server := &http.Server{
-		Addr:              fmt.Sprint(ipAddr.String(), ":80"),
+		Addr:              addr,
 		ReadTimeout:       4 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		IdleTimeout:       10 * time.Second,
-		Handler:           s.Routes(),
+		Handler:           s.routes(),
 	}
+
 	errChan := s.listenAndShutdown(server)
 	slog.Info("Starting Server", "address", server.Addr)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("server listning on address %q", server.Addr)
+		return err // caller has context
 	}
 	if err = <-errChan; err != nil {
-		return fmt.Errorf("server shutting down: %v", err)
+		return fmt.Errorf("server shutting down: %w", err)
 	}
 	return nil
 }
@@ -102,6 +112,10 @@ func (s *Server) ShutdownServer(force bool) error {
 		return nil
 	}
 	return ErrNonIdle
+}
+
+func (s *Server) NotifyForShutdownReqWhenNotIdle(ch chan string) {
+	s.notifyCh = ch
 }
 
 func (s *Server) listenAndShutdown(server *http.Server) chan error {
@@ -120,13 +134,26 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	return errChan
 }
 
-func (s *Server) Routes() http.Handler {
+func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	panicRecover := alice.New(s.recoverPanic)
 	mux.Handle("GET /{$}", panicRecover.ThenFunc(s.indexFilesHandler))
 	mux.Handle("GET /{id}", panicRecover.ThenFunc(s.serveFileHandler))
-	mux.Handle("POST /stop", panicRecover.ThenFunc(s.Stop))
+	mux.Handle("GET /owner", panicRecover.ThenFunc(s.ownerNameHandler))
+	mux.Handle("POST /stop", panicRecover.ThenFunc(s.stopHandler))
 	return mux
+}
+
+func (s *Server) ownerNameHandler(w http.ResponseWriter, r *http.Request) {
+	config, err := client.LoadConfig()
+	if err != nil {
+		s.serverErrorResponse(w, r, err)
+		return
+	}
+	username := config.Personal.Username
+	if err = s.writeJSON(w, envelop{mdns.UsernameKey: username}, http.StatusOK, nil); err != nil {
+		s.serverErrorResponse(w, r, err)
+	}
 }
 
 // indexFilesHandler creates an HTTP handler that serves file indexes for Server.FilePaths.
@@ -166,38 +193,34 @@ func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
-// Stop handles HTTP requests to stop the server.
+// stopHandler handles HTTP requests to shut down the server.
 // Only works when the server is stoppable and not actively serving files.
 //
 // Returns:
 // - Success (202 Accepted): When shutdown is initiated
 // - Error: When the server is not stoppable or is currently serving files
-func (s *Server) Stop(w http.ResponseWriter, r *http.Request) {
+func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	c := s.ActiveDowns
 	s.mu.Unlock()
-	if s.Stoppable && c == 0 {
-		s.StopCtxCancel()
-		msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
-		if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
-			s.serverErrorResponse(w, r, err)
+	if s.Stoppable {
+		if c == 0 {
+			s.StopCtxCancel()
+			msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
+			if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
+				s.serverErrorResponse(w, r, err)
+			}
+			return
 		}
+		s.mu.Lock()
+		if s.notifyCh != nil {
+			s.notifyCh <- r.Header.Get("X-Requested-By")
+			close(s.notifyCh)
+			s.notifyCh = nil
+		}
+		s.mu.Unlock()
+		s.notIdleResponse(w, r)
 		return
 	}
-	if !s.Stoppable {
-		s.notStoppableResponse(w, r)
-		return
-	}
-	s.notIdleResponse(w, r)
-}
-
-// GetOutboundIP gets the preferred outbound ip of this machine
-func GetOutboundIP() (net.IP, error) {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return nil, fmt.Errorf("dialing to get outbound ip address: %v", err)
-	}
-	defer conn.Close()
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP, nil
+	s.notStoppableResponse(w, r)
 }
