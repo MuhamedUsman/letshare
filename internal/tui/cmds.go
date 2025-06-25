@@ -1,6 +1,9 @@
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"github.com/MuhamedUsman/letshare/internal/server"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 type errMsg struct {
 	// errHeader: header to display in the error message
@@ -75,13 +78,15 @@ func preferencesSavedCmd(exit bool) tea.Cmd {
 
 type progressMsg uint64
 
-type logMsg string
+type zippingLogMsg string
 
 type zippingDoneMsg []string
 
 type zippingErrMsg error
 
 type zippingCanceledMsg struct{}
+
+type serverLogMsg server.Log
 
 type rerenderPreferencesMsg struct{}
 
@@ -106,3 +111,14 @@ func instanceShutdownCmd() tea.Msg {
 }
 
 type shutdownReqWhenNotIdleMsg string
+
+type handleExtSendCh struct {
+	logCh        chan server.Log
+	activeDownCh <-chan int
+}
+
+func (msg handleExtSendCh) cmd() tea.Msg {
+	return msg
+}
+
+type activeDownsMsg int

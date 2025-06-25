@@ -2,21 +2,20 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
-	"github.com/MuhamedUsman/letshare/internal/cfg"
-	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/domain"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/justinas/alice"
+	"hash/crc32"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,31 +23,57 @@ import (
 
 var ErrNonIdle = errors.New("server is not idle (serving files)")
 
+type Log struct {
+	Msg  string
+	Args []any
+}
+
+// tlog is used to lazy Log messages from the server which tui will display
+type tlog struct {
+	logCh        chan<- Log
+	activeDownCh chan<- int
+}
+
+func (t tlog) info(msg string, args ...any) {
+	select {
+	case t.logCh <- Log{Msg: msg, Args: args}:
+	default:
+	}
+}
+
+func (t tlog) relayActiveDown(n int) {
+	select {
+	case t.activeDownCh <- n:
+	default:
+	}
+}
+
 type Server struct {
 	// file paths to be served, [K: accessID, V: filepath]
-	FilePaths map[string]string
-
-	mu *sync.Mutex
+	FilePaths map[uint32]string
+	log       tlog
+	mu        *sync.Mutex
 	// Once Done, the server will exit
 	StopCtx context.Context
 	// Cancel func for StopCtx
 	StopCtxCancel context.CancelFunc
+	// notifyCh is used to notify for the server shutdown request when ActiveDowns > 0
+	notifyCh chan<- string // X-Requested-By header value
 	// indicates if the server is idling or currently serving files
 	ActiveDowns int
-	// notifyCh is used to notify for the server shutdown request when ActiveDowns > 0
-	notifyCh chan string // X-Requested-By header value
-
 	// Option to let others on the same LAN to stopHandler this instance from hosting
 	Stoppable bool
 }
 
-func New(stoppable bool) *Server {
+func New(stoppable bool, logCh chan<- Log, activeDownCh chan<- int) *Server {
 	ctx, cancel := context.WithCancel(bgtask.Get().ShutdownCtx())
+	log := tlog{logCh: logCh, activeDownCh: activeDownCh}
 	return &Server{
-		FilePaths:     make(map[string]string),
+		FilePaths:     make(map[uint32]string),
+		log:           log,
+		mu:            new(sync.Mutex),
 		StopCtx:       ctx,
 		StopCtxCancel: cancel,
-		mu:            new(sync.Mutex),
 		Stoppable:     stoppable,
 	}
 }
@@ -74,9 +99,10 @@ func (s *Server) StartServer(filePaths ...string) error {
 		return err
 	}
 	addr := fmt.Sprint(ipAddr.To4(), ":80")
-	if cfg.TestFlag {
+	if config.TestFlag {
 		addr = fmt.Sprint(ipAddr.To4(), ":8080")
 	}
+
 	server := &http.Server{
 		Addr:              addr,
 		ReadTimeout:       4 * time.Second,
@@ -84,12 +110,19 @@ func (s *Server) StartServer(filePaths ...string) error {
 		IdleTimeout:       10 * time.Second,
 		Handler:           s.routes(),
 	}
+
 	s.setFilePaths(filePaths...)
+	defer func() {
+		s.deleteTempFiles()
+		close(s.log.logCh)
+	}()
+
 	errChan := s.listenAndShutdown(server)
-	slog.Info("Starting Server", "address", server.Addr)
+	s.log.info("Starting server", "Addr", addr)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err // caller has context
 	}
+	s.log.info("Shutting down server", "Addr", addr)
 	if err = <-errChan; err != nil {
 		return fmt.Errorf("server shutting down: %w", err)
 	}
@@ -106,7 +139,7 @@ func (s *Server) ShutdownServer(force bool) error {
 	return ErrNonIdle
 }
 
-func (s *Server) NotifyForShutdownReqWhenNotIdle(ch chan string) {
+func (s *Server) NotifyForShutdownReqWhenNotIdle(ch chan<- string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.notifyCh = ch
@@ -139,24 +172,17 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) ownerNameHandler(w http.ResponseWriter, r *http.Request) {
-	config, err := client.LoadConfig()
-	if err != nil {
+	username := getConfig().Personal.Username
+	if err := s.writeJSON(w, envelop{mdns.UsernameKey: username}, http.StatusOK, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
 		return
 	}
-	username := config.Personal.Username
-	if err = s.writeJSON(w, envelop{mdns.UsernameKey: username}, http.StatusOK, nil); err != nil {
-		s.serverErrorResponse(w, r, err)
-	}
-}
-
-// setFilePaths sets the file paths to be served by the server.
-func (s *Server) setFilePaths(filePaths ...string) {
-	for _, p := range filePaths {
-		randBytes := make([]byte, 3)
-		_, _ = rand.Read(randBytes)
-		id := hex.EncodeToString(randBytes)
-		s.FilePaths[id] = p
+	if shouldLogReq(r.RemoteAddr) {
+		reqBy := r.Header.Get("X-Requested-By")
+		if reqBy == "" {
+			reqBy = strings.Split(r.RemoteAddr, ":")[0]
+		}
+		s.log.info("Your username was requested", "ReqBy", reqBy)
 	}
 }
 
@@ -182,27 +208,60 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.writeJSON(w, envelop{"fileIndexes": fsInfos}, http.StatusOK, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
+		return
+	}
+	if shouldLogReq(r.RemoteAddr) {
+		reqBy := r.Header.Get("X-Requested-By")
+		if reqBy == "" {
+			reqBy = strings.Split(r.RemoteAddr, ":")[0]
+		}
+		s.log.info("File indexes were requested", "ReqBy", reqBy)
 	}
 }
 
 func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.ActiveDowns++
+	s.log.relayActiveDown(s.ActiveDowns)
 	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.ActiveDowns--
+		s.log.relayActiveDown(s.ActiveDowns)
+		s.mu.Unlock()
+	}()
 
 	accessID := r.PathValue("id")
-	filePath, ok := s.FilePaths[accessID]
+	id, err := strconv.ParseUint(accessID, 10, 32)
+	if err != nil { // Invalid access ID
+		s.notFoundResponse(w, r)
+		return
+	}
+
+	filePath, ok := s.FilePaths[uint32(id)]
 	if !ok {
 		s.notFoundResponse(w, r)
 		return
 	}
 	filename := filepath.Base(filePath)
+
+	var reqBy string
+	shouldLog := shouldLogReq(r.RemoteAddr) && r.Method == "GET" && r.Header.Get("Range") == ""
+
+	if shouldLog {
+		reqBy = r.Header.Get("X-Requested-By")
+		if reqBy == "" {
+			reqBy = strings.Split(r.RemoteAddr, ":")[0]
+		}
+		s.log.info("Serving file", "File", filename, "ReqBy", reqBy)
+	}
+
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	http.ServeFile(w, r, filePath)
 
-	s.mu.Lock()
-	s.ActiveDowns--
-	s.mu.Unlock()
+	if shouldLog {
+		s.log.info("Serving completed", "File", filename, "ReqBy", reqBy)
+	}
 }
 
 // stopHandler handles HTTP requests to shut down the server.
@@ -212,14 +271,24 @@ func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 // - Success (202 Accepted): When shutdown is initiated
 // - Error: When the server is not stoppable or is currently serving files
 func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
+	reqBy := r.Header.Get("X-Requested-By")
+	if reqBy == "" {
+		reqBy = strings.Split(r.RemoteAddr, ":")[0]
+	}
+
+	if shouldLogReq(r.RemoteAddr) {
+		s.log.info("Server shutdown request", "ReqBy", reqBy)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	c := s.ActiveDowns
+
 	if s.Stoppable {
 		if c == 0 {
 			s.StopCtxCancel()
-			msg := "Shutdown initiated, it may take maximum of 10 seconds to shutdown the server."
+			msg := "Shutdown initiated, it may take maximum of 10 seconds."
+			s.log.info(msg)
 			if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
 				s.serverErrorResponse(w, r, err)
 			}
@@ -227,7 +296,7 @@ func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if s.notifyCh != nil {
-			s.notifyCh <- r.Header.Get("X-Requested-By")
+			s.notifyCh <- reqBy
 			close(s.notifyCh)
 			s.notifyCh = nil
 		}
@@ -235,4 +304,37 @@ func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.notStoppableResponse(w, r)
+}
+
+// setFilePaths sets the file paths to be served by the server.
+func (s *Server) setFilePaths(filePaths ...string) {
+	for _, p := range filePaths {
+		hash := crc32.ChecksumIEEE([]byte(p))
+		s.FilePaths[hash] = p
+	}
+}
+
+func (s *Server) deleteTempFiles() {
+	s.log.info("Deleting temporary files")
+	for _, p := range s.FilePaths {
+		if strings.HasPrefix(p, os.TempDir()) {
+			if err := os.Remove(p); err != nil {
+				slog.Error("deleting temp files", "err", err)
+			}
+		}
+	}
+}
+
+func getConfig() config.Config {
+	cfg, err := config.Get()
+	if err != nil && errors.Is(err, config.ErrNoConfig) {
+		cfg, _ = config.Load()
+	}
+	return cfg
+}
+
+func shouldLogReq(addr string) bool {
+	reqIp := strings.Split(addr, ":")[0]
+	ip, _ := network.GetOutboundIP()
+	return ip.String() != reqIp
 }

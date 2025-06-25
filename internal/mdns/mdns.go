@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/cfg"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/brutella/dnssd"
 	"github.com/brutella/dnssd/log"
@@ -86,7 +86,7 @@ func Get() *MDNS {
 // Returns an error if service registration fails.
 func (r *MDNS) Publish(ctx context.Context, instance, host, username string, port int) error {
 
-	if cfg.TestFlag {
+	if config.TestFlag {
 		port = 8080
 	}
 
@@ -132,14 +132,14 @@ func (r *MDNS) Publish(ctx context.Context, instance, host, username string, por
 	return nil
 }
 
+// triggerRefresh triggers a refresh of the mDNS cache
+// it is to ensure, other discovery clients run their dnssd.RmvFunc instantly
 func (r *MDNS) triggerRefresh() error {
-	addFunc := dnssd.AddFunc(func(e dnssd.BrowseEntry) {})
-	rvmFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {})
-	service := fmt.Sprintf("%s.%s", mdnsService, domain)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := dnssd.LookupType(ctx, service, addFunc, rvmFunc); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("triggring refresh: %v", err)
+	instance := fmt.Sprintf("%s.%s%s", DefaultInstance, mdnsService, domain)
+	if _, err := dnssd.LookupInstance(ctx, instance); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("triggering refresh %q: %v", instance, err)
 	}
 	return nil
 }
@@ -196,7 +196,9 @@ func (r *MDNS) Discover(ctx context.Context) error {
 // NotifyOnChange blocks until a change occurs in the discovered mDNS entries.
 func (r *MDNS) NotifyOnChange() {
 	r.notifyCh = make(chan struct{})
-	<-r.notifyCh
+	select {
+	case <-r.notifyCh:
+	}
 	r.notifyCh = nil
 }
 
@@ -214,11 +216,21 @@ func (r *MDNS) Entries() ServiceEntries {
 func getOwner(addr string) (string, error) {
 	c := http.Client{Timeout: 2 * time.Second}
 	addr = fmt.Sprintf("http://%s/owner", addr)
-	resp, err := c.Get(addr)
+
+	req, err := http.NewRequest("GET", addr, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating request: %v", err)
+	}
+
+	cfg, _ := config.Get()
+	req.Header.Set("X-Requested-By", cfg.Personal.Username)
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
@@ -228,11 +240,9 @@ func getOwner(addr string) (string, error) {
 		return "", fmt.Errorf("reading response: %v", err)
 	}
 
-	var ownerName struct {
-		Username string `json:"username"`
-	}
-	if err = json.Unmarshal(b, &ownerName); err != nil {
+	var r map[string]string
+	if err = json.Unmarshal(b, &r); err != nil {
 		return "", fmt.Errorf("parsing response: %v", err)
 	}
-	return ownerName.Username, nil
+	return r["username"], nil
 }

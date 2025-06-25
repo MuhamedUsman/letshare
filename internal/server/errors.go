@@ -3,7 +3,6 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 )
 
 func (s *Server) errorResponse(w http.ResponseWriter, _ *http.Request, status int, message any) {
@@ -20,7 +19,6 @@ func (s *Server) badRequestResponse(w http.ResponseWriter, r *http.Request, err 
 
 func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
 	slog.Error(err.Error())
-	debug.PrintStack()
 	message := "the server encountered a problem and could not process your request"
 	s.errorResponse(w, r, http.StatusInternalServerError, message)
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
-	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/zipr"
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/dustin/go-humanize"
 	"github.com/mattn/go-runewidth"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,22 +35,18 @@ const (
 )
 
 type zipTracker struct {
-	ctx                context.Context
-	cancel             context.CancelFunc
-	prevUpdateTime     time.Time
-	start              time.Time
-	timeTaken          time.Duration
-	logs               []string
-	archives           []string
-	progressCh         <-chan uint64
-	logCh              <-chan string
-	totalSize          uint64
-	processed          uint64
-	processedInPrevSec uint64
-	processedPerSec    uint64
-	viewableLogs       int
-	isTotalSize        bool
-	state              zippingState
+	ctx                                 context.Context
+	cancel                              context.CancelFunc
+	prevUpdateTime, start               time.Time
+	timeTaken                           time.Duration
+	logs, archives                      []string
+	progressCh                          <-chan uint64
+	logCh                               <-chan string
+	totalSize, processed                uint64
+	processedInPrevSec, processedPerSec uint64
+	viewableLogs                        int
+	isTotalSize                         bool
+	state                               zippingState
 }
 
 func newZipTracker(parentCtx context.Context, p <-chan uint64, l <-chan string) *zipTracker {
@@ -102,11 +97,6 @@ func (z *zipTracker) setLogsLength(l int) {
 	z.logs = newLogs
 }
 
-func (z *zipTracker) destroy() {
-	z.cancel()
-	z.ctx, z.cancel, z.progressCh, z.logCh, z.logCh = nil, nil, nil, nil, nil
-}
-
 type processFilesModel struct {
 	selections             *selections
 	zipTracker             *zipTracker
@@ -130,7 +120,7 @@ func initialProcessFilesModel() processFilesModel {
 
 func (m processFilesModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
-	case "ctrl+c", "Q", "q":
+	case "Q", "q":
 		return m.zipTracker.state == processing
 	case "?":
 		return !m.disableKeymap
@@ -158,9 +148,6 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 
 		case "Q", "q":
 			return m, m.confirmStopZipping(false)
-
-		case "ctrl+c":
-			return m, m.confirmStopZipping(true)
 
 		case "?":
 			m.showHelp = !m.showHelp
@@ -193,9 +180,9 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.zipTracker = newZipTracker(shutdownCtx, progCh, logCh)
 		m.updateDimensions() // update the logs length
 
-		cfg, err := client.GetConfig()
-		if errors.Is(err, client.ErrNoConfig) {
-			cfg, err = client.LoadConfig()
+		cfg, err := config.Get()
+		if errors.Is(err, config.ErrNoConfig) {
+			cfg, err = config.Load()
 		}
 		if err != nil {
 			return m, errMsg{err: err, fatal: true}.cmd
@@ -221,7 +208,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		percentage := float64(m.zipTracker.processed) / float64(m.zipTracker.totalSize)
 		return m, tea.Batch(m.trackProgress(), m.progress.SetPercent(percentage))
 
-	case logMsg:
+	case zippingLogMsg:
 		l := filepath.Base(string(msg))
 		m.zipTracker.appendLog(l)
 		return m, m.trackLogs()
@@ -230,7 +217,6 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.zipTracker.archives = msg
 		m.zipTracker.processed = m.zipTracker.totalSize
 		m.zipTracker.state = done
-		m.zipTracker.destroy()
 		m.updateDimensions()
 		return m, tea.Batch(localChildSwitchMsg{child: send, focus: true}.cmd, sendFilesMsg(m.zipTracker.archives).cmd)
 
@@ -239,8 +225,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		return m, localChildSwitchMsg{child: dirNav, focus: true}.cmd
 
 	case zippingErrMsg:
-		//m.zipTracker.destroy()
-		log.Print(msg.Error())
+		return m, tea.Batch(m.showZippingErrAlert(msg), localChildSwitchMsg{child: dirNav, focus: true}.cmd)
 
 	}
 
@@ -373,7 +358,7 @@ func (m processFilesModel) renderProgress() string {
 }
 
 func (m *processFilesModel) processFiles(
-	cfg client.Config,
+	cfg config.Config,
 	progCh chan<- uint64,
 	logCh chan<- string,
 	msg processSelectionsMsg,
@@ -416,7 +401,6 @@ func (m *processFilesModel) processFiles(
 			<-m.zipTracker.ctx.Done()
 			return zippingCanceledMsg{}
 		}
-
 		if err != nil {
 			return zippingErrMsg(err)
 		}
@@ -436,7 +420,7 @@ func (m processFilesModel) trackProgress() tea.Cmd {
 func (m processFilesModel) trackLogs() tea.Cmd {
 	return func() tea.Msg {
 		for l := range m.zipTracker.logCh {
-			return logMsg(l)
+			return zippingLogMsg(l)
 		}
 		return nil
 	}
@@ -450,6 +434,7 @@ func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
 		m.zipTracker.state = canceling
 		m.zipTracker.cancel()
 		if quit {
+			shutdownBgTasks()
 			return tea.Quit
 		}
 		return nil
@@ -462,6 +447,24 @@ func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
 	}.cmd
+}
+
+func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
+	var b string
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		switch {
+		case errors.Is(pe.Err, os.ErrPermission):
+			b = fmt.Sprintf("Permission denied for %q. You may run this app with higher privileges.", filepath.ToSlash(pe.Path))
+		case errors.Is(pe.Err, os.ErrNotExist):
+			b = fmt.Sprintf("File %q does not exist.", filepath.ToSlash(pe.Path))
+		default:
+			b = fmt.Sprintf("Unexpected error occurred while accessing %q.", filepath.ToSlash(pe.Path))
+		}
+	} else {
+		b = "Unexpected error occurred while zipping files."
+	}
+	return alertDialogMsg{header: "ZIPPING ERROR", body: b}.cmd
 }
 
 func zipDirsAndCollectWithFiles(ctx context.Context, zipper *zipr.Zipr, root string, filenames ...string) ([]string, error) {
