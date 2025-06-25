@@ -296,12 +296,10 @@ func (m *extDirNavModel) updateDimensions() {
 func (m *extDirNavModel) updateTitleStyleAsFocus(focus bool) {
 	if focus {
 		m.titleStyle = titleStyle.
-			UnsetMarginBottom().
 			Background(highlightColor).
 			Foreground(subduedHighlightColor)
 	} else {
 		m.titleStyle = titleStyle.
-			UnsetMarginBottom().
 			Background(grayColor).
 			Foreground(highlightColor)
 	}

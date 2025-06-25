@@ -122,10 +122,14 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, spaceFocusSwitchCmd
 
 		case "ctrl+c":
-			bgTask := bgtask.Get()
-			if err := bgTask.Shutdown(5 * time.Second); err != nil {
-				slog.Error("failed to shutdown background task", "tasks", bgTask.Tasks, "error", err)
+			if m.localSpace.send.isServing {
+				return m, m.localSpace.send.shutdownServer(true)
 			}
+			state := m.localSpace.processFiles.zipTracker.state
+			if state == processing || state == canceling {
+				return m, m.localSpace.processFiles.confirmStopZipping(true)
+			}
+			shutdownBgTasks()
 			return m, tea.Quit
 		}
 
@@ -166,4 +170,11 @@ func (m *MainModel) updateKeymapsByFocus() {
 	m.extensionSpace.updateKeymap(currentFocus != extension)
 	m.remoteSpace.disableKeymap = currentFocus != remote
 	m.confirmation.disableKeymap = currentFocus != confirmation
+}
+
+func shutdownBgTasks() {
+	bgTask := bgtask.Get()
+	if err := bgTask.Shutdown(5 * time.Second); err != nil {
+		slog.Error("failed to shutdown background task", "tasks", bgTask.Tasks, "error", err)
+	}
 }

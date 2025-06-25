@@ -3,17 +3,20 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lmittmann/tint"
 	"log/slog"
+	_ "net/http/pprof"
 	"os"
 	"time"
 )
 
 func init() {
+	flag.Parse()
 }
 
 func main() {
@@ -24,7 +27,7 @@ func main() {
 	}
 	defer f.Close()
 
-	h := tint.NewHandler(f, &tint.Options{TimeFormat: time.Kitchen})
+	h := tint.NewHandler(f, &tint.Options{TimeFormat: time.Kitchen, NoColor: true})
 	slog.SetDefault(slog.New(h))
 
 	bgtask.Get().Run(func(shutdownCtx context.Context) {

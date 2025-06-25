@@ -24,7 +24,7 @@ func main() {
 		}
 	})
 	/*bgtask.Get().Run(func(shutdownCtx context.Context) {
-		slog.Info("Discovering Multicast DNS Entries")
+		slog.info("Discovering Multicast DNS Entries")
 		if err := m.Discover(shutdownCtx); err != nil {
 			slog.Error(err.Error())
 		}

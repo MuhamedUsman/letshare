@@ -215,19 +215,11 @@ main:
 // This should be called when all zip operations are complete to ensure
 // the final progress is reported and to allow any goroutines reading
 // from the progress channel to terminate properly.
-//
-// Example:
-//
-//	defer func() { _ = zipper.Close() }()
 func (z *Zipr) Close() error {
 	_ = trySend(z.progressCh, z.read.Load())
 	z.read.Store(0)
-	if z.logCh != nil {
-		close(z.logCh)
-	}
-	if z.progressCh != nil {
-		close(z.progressCh)
-	}
+	close(z.logCh)
+	close(z.progressCh)
 	return nil
 }
 

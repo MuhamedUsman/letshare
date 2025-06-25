@@ -14,6 +14,7 @@ require (
 	github.com/lmittmann/tint v1.1.2
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mattn/go-runewidth v0.0.16
+	github.com/muesli/reflow v0.3.0
 	github.com/sahilm/fuzzy v0.1.1
 	golang.org/x/sync v0.15.0
 )

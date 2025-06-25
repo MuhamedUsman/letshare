@@ -10,11 +10,13 @@ type extChild = int
 const (
 	home extChild = iota
 	extDirNav
+	extSend
 	preference
 )
 
 type extensionSpaceModel struct {
 	extDirNav                    extDirNavModel
+	extSend                      extSendModel
 	preference                   preferenceModel
 	titleStyle                   lipgloss.Style
 	extendedSpace                focusSpace
@@ -28,6 +30,7 @@ func initialExtensionSpaceModel() extensionSpaceModel {
 	return extensionSpaceModel{
 		extDirNav:   initialExtDirNavModel(),
 		preference:  initialPreferenceModel(),
+		extSend:     initialExtSendModel(),
 		titleStyle:  titleStyle,
 		activeChild: home,
 	}
@@ -39,6 +42,8 @@ func (m extensionSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 		return false
 	case extDirNav:
 		return m.extDirNav.capturesKeyEvent(msg)
+	case extSend:
+		return m.extSend.capturesKeyEvent(msg)
 	case preference:
 		return m.preference.capturesKeyEvent(msg)
 	default:
@@ -122,6 +127,8 @@ func (m extensionSpaceModel) View() string {
 		return style.Render(lipgloss.PlaceHorizontal(largeContainerW(), lipgloss.Center, bt))
 	case extDirNav:
 		return style.Render(m.extDirNav.View())
+	case extSend:
+		return style.Render(m.extSend.View())
 	case preference:
 		return style.Render(m.preference.View())
 	default:
@@ -130,9 +137,10 @@ func (m extensionSpaceModel) View() string {
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmds [2]tea.Cmd
+	var cmds [3]tea.Cmd
 	m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
-	m.preference, cmds[1] = m.preference.Update(msg)
+	m.extSend, cmds[1] = m.extSend.Update(msg)
+	m.preference, cmds[2] = m.preference.Update(msg)
 	return tea.Batch(cmds[:]...)
 }
 
@@ -151,5 +159,6 @@ func (m *extensionSpaceModel) updateTitleStyleAsFocus(focus bool) {
 func (m *extensionSpaceModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 	m.extDirNav.updateKeymap(disable || m.activeChild != extDirNav)
+	m.extSend.updateKeymap(disable || m.activeChild != extSend)
 	m.preference.updateKeymap(disable || m.activeChild != preference)
 }

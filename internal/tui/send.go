@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/server"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -13,7 +14,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/mattn/go-runewidth"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -101,8 +104,6 @@ func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 		return !m.disableKeymap
 	case "esc":
 		return m.instanceState == idle && !m.disableKeymap
-	case "ctrl+c":
-		return m.isServing && !m.disableKeymap
 	default:
 		return false
 	}
@@ -136,8 +137,9 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				m.selected = m.btnIdx
 				conf := m.getConfig()
 				m.customInstance = conf.Share.InstanceName
-				m.server = server.New(conf.Share.StoppableInstance)
-				return m, m.publishInstanceAndStartServer()
+				lch, dch := make(chan server.Log, 10), make(chan int, 1)
+				m.server = server.New(conf.Share.StoppableInstance, lch, dch)
+				return m, tea.Sequence(handleExtSendCh{lch, dch}.cmd, m.publishInstanceAndStartServer())
 			}
 
 		case "Q", "q":
@@ -146,8 +148,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			}
 
 		case "ctrl+c":
-			if m.isServing {
-				return m, m.shutdownServer(true)
+			if len(m.files) > 0 {
+				m.deleteTempFiles()
 			}
 
 		case "esc":
@@ -179,6 +181,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 	case instanceShutdownMsg:
 		m.isSelected, m.isServing = false, false
 		m.instanceState = idle
+		return m, localChildSwitchMsg{child: dirNav, focus: true}.cmd
 
 	case shutdownReqWhenNotIdleMsg:
 		return m, tea.Batch(m.notifyForShutdownReqWhenNotIdle(), m.showShutdownReqWhenNotIdleAlert(string(msg)))
@@ -194,10 +197,13 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		case requesting:
 		case idle:
 			m.isSelected = false
+
 		case available:
 			m.isSelected = true
-			m.server = server.New(m.getConfig().Share.StoppableInstance)
-			return m, m.publishInstanceAndStartServer()
+			lch, dch := make(chan server.Log, 10), make(chan int, 1)
+			m.server = server.New(m.getConfig().Share.StoppableInstance, lch, dch)
+			return m, tea.Sequence(handleExtSendCh{lch, dch}.cmd, m.publishInstanceAndStartServer())
+
 		case notResponding:
 			m.isSelected = false
 			m.instanceState = idle
@@ -206,9 +212,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				errStr:    "Request failed, the server instance is not responding, it might be down.",
 				fatal:     false,
 			}.cmd
+
 		case requestRejected, serving:
 			m.isSelected = false
 			return m, m.notifyInstanceAvailability()
+
 		case requestAccepted:
 			return m, m.notifyInstanceAvailability()
 		}
@@ -385,7 +393,7 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 	body := "This will delete all the processed files, and you'll return to file selection."
 	positiveFunc := func() tea.Cmd {
 		m.isSelected, m.isServing = false, false
-		return localChildSwitchMsg{child: dirNav, focus: true}.cmd
+		return tea.Batch(localChildSwitchMsg{child: dirNav, focus: true}.cmd, m.deleteTempFiles())
 	}
 	return alertDialogMsg{
 		header:         header,
@@ -527,9 +535,10 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 			positiveFunc := func() tea.Cmd {
 				_ = m.server.ShutdownServer(true)
 				if quit {
+					shutdownBgTasks()
 					return tea.Quit
 				}
-				return tea.Batch(instanceShutdownCmd, localChildSwitchMsg{child: dirNav, focus: true}.cmd)
+				return instanceShutdownCmd
 			}
 			return alertDialogMsg{
 				header:         "FORCE SHUTDOWN?",
@@ -541,6 +550,7 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 			}
 		}
 		if quit {
+			shutdownBgTasks()
 			return tea.Quit()
 		}
 		return instanceShutdownMsg{}
@@ -568,10 +578,23 @@ func (m *sendModel) stopOwnedServerInstance(instance string) tea.Cmd {
 	}
 }
 
-func (m sendModel) getConfig() client.Config {
-	cfg, err := client.GetConfig()
+func (m sendModel) getConfig() config.Config {
+	cfg, err := config.Get()
 	if err != nil {
-		cfg, _ = client.LoadConfig()
+		cfg, _ = config.Load()
 	}
 	return cfg
+}
+
+func (m sendModel) deleteTempFiles() tea.Cmd {
+	return func() tea.Msg {
+		for _, p := range m.files {
+			if strings.HasPrefix(p, os.TempDir()) {
+				if err := os.Remove(p); err != nil {
+					slog.Error("deleting temp files", "err", err)
+				}
+			}
+		}
+		return nil
+	}
 }

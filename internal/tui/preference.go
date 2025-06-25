@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/client"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -103,7 +103,7 @@ type preferenceModel struct {
 }
 
 func initialPreferenceModel() preferenceModel {
-	cfg, err := client.LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		println()
 		slog.Error("unable to load config:", "error", err)
@@ -322,12 +322,10 @@ func (m *preferenceModel) updateDimensions() {
 func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
 	if focus {
 		m.titleStyle = titleStyle.
-			UnsetMarginBottom().
 			Background(highlightColor).
 			Foreground(subduedHighlightColor)
 	} else {
 		m.titleStyle = titleStyle.
-			UnsetMarginBottom().
 			Background(grayColor).
 			Foreground(highlightColor)
 	}
@@ -512,7 +510,7 @@ func (m preferenceModel) resetInsertMode() {
 }
 
 func (m *preferenceModel) resetToSavedState() {
-	cfg, _ := client.GetConfig() // initialPreferenceModel loaded the config -> err ignored
+	cfg, _ := config.Load() // initialPreferenceModel loaded the config -> err ignored
 	for i, q := range m.preferenceQues {
 		switch q.title {
 		case username:
@@ -541,7 +539,7 @@ func (m *preferenceModel) inactivePreference() tea.Cmd {
 }
 
 func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
-	cfg := client.Config{}
+	cfg := config.Config{}
 	for _, q := range m.preferenceQues {
 		switch q.title {
 		case username:
@@ -561,7 +559,7 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 		}
 	}
 	return func() tea.Msg {
-		if err := client.SaveConfig(cfg); err != nil {
+		if err := config.Save(cfg); err != nil {
 			return errMsg{
 				err:   err,
 				fatal: true,
@@ -573,7 +571,7 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 
 func (m preferenceModel) isUnsavedState() bool {
 	var unsaved bool
-	cfg, _ := client.GetConfig() // initialPreferenceModel loaded the config -> err ignored
+	cfg, _ := config.Load() // initialPreferenceModel loaded the config -> err ignored
 	for _, q := range m.preferenceQues {
 		// early return so we don't loop for other titles
 		if unsaved {
@@ -643,7 +641,7 @@ func (m preferenceModel) showInvalidInputAlert(txt string) tea.Cmd {
 	return alertDialogMsg{header: "INVALID INPUT!", body: txt}.cmd
 }
 
-func populatePreferencesFromConfig(cfg client.Config) []preferenceQue {
+func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 	return []preferenceQue{
 		{
 			title:  username,

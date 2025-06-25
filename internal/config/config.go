@@ -1,10 +1,10 @@
-package client
+package config
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/BurntSushi/toml"
-	"github.com/MuhamedUsman/letshare/internal/cfg"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +20,17 @@ const (
 var (
 	ErrNoConfig = errors.New("config must be loaded")
 )
+
+var TestFlag bool
+
+func init() {
+	flag.BoolVar(&TestFlag,
+		"test",
+		false,
+		"Use to run app with separate user config file, useful for testing purposes",
+	)
+	// parsed in main package
+}
 
 type PersonalConfig struct {
 	Username string `toml:"username"`
@@ -48,9 +59,9 @@ var (
 	config *Config
 )
 
-// GetConfig returns the lastest loaded/saved user's config,
-// if it returns ErrNoConfig, LoadConfig OR SaveConfig must be called.
-func GetConfig() (Config, error) {
+// Get returns the lastest loaded/saved user's config,
+// if it returns ErrNoConfig, Load OR Save must be called.
+func Get() (Config, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	if config != nil {
@@ -59,8 +70,8 @@ func GetConfig() (Config, error) {
 	return Config{}, ErrNoConfig
 }
 
-// LoadConfig loads the configuration from the user's config file.
-func LoadConfig() (Config, error) {
+// Load loads the configuration from the user's config file.
+func Load() (Config, error) {
 	f, err := getUserConfigFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -97,8 +108,8 @@ func LoadConfig() (Config, error) {
 	return cfg, nil
 }
 
-// SaveConfig saves the configuration to the user's config file.
-func SaveConfig(c Config) error {
+// Save saves the configuration to the user's config file.
+func Save(c Config) error {
 	f, err := createConfigFile()
 	if err != nil {
 		return fmt.Errorf("creating/truncating config file: %w", err)
@@ -150,7 +161,7 @@ func getUserConfigFile() (*os.File, error) {
 	}
 
 	path := filepath.Join(d, appConfDir, appConfFile)
-	if cfg.TestFlag {
+	if TestFlag {
 		path = filepath.Join(d, testConfDir, appConfFile)
 	}
 	var f *os.File
@@ -167,7 +178,7 @@ func createConfigFile() (*os.File, error) {
 	}
 
 	path := filepath.Join(d, appConfDir)
-	if cfg.TestFlag {
+	if TestFlag {
 		path = filepath.Join(d, testConfDir)
 	}
 	if err = os.MkdirAll(path, 0o700); err != nil {

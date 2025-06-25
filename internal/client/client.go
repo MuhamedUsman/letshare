@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/domain"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"io"
@@ -119,9 +120,9 @@ func (c *Client) StopServer(instance string) (int, error) {
 }
 
 func (c *Client) getClientUsername() (string, error) {
-	conf, err := LoadConfig()
+	cfg, err := config.Get()
 	if err != nil {
-		return "", err
+		cfg, _ = config.Load()
 	}
-	return conf.Personal.Username, nil
+	return cfg.Personal.Username, nil
 }
