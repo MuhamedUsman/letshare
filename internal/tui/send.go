@@ -48,7 +48,7 @@ const (
 	idle requiredInstanceState = iota
 	// we're requesting the instance
 	requesting
-	// the instance is serving files and is not idle
+	// the instance is serving indexes and is not idle
 	// the owner will be notified for our request
 	serving
 	// the instance became available for us to use
@@ -68,16 +68,17 @@ func instanceStateCmd(state requiredInstanceState) tea.Cmd {
 }
 
 type sendModel struct {
-	server                                         *server.Server
-	client                                         *client.Client
-	mdns                                           *mdns.MDNS
-	files                                          []string
-	customInstance                                 string
-	titleStyle                                     lipgloss.Style
-	txtInput                                       textinput.Model
-	btnIdx, selected                               instanceBtn
-	instanceState                                  requiredInstanceState
-	isSelected, isServing, showHelp, disableKeymap bool
+	server                              *server.Server
+	client                              *client.Client
+	mdns                                *mdns.MDNS
+	files                               []string
+	customInstance                      string
+	titleStyle                          lipgloss.Style
+	txtInput                            textinput.Model
+	btnIdx, selected                    instanceBtn
+	instanceState                       requiredInstanceState
+	isSelected, showHelp, disableKeymap bool
+	isServing, isShutdown               bool
 }
 
 func initialSendModel() sendModel {
@@ -91,7 +92,7 @@ func initialSendModel() sendModel {
 	t.PlaceholderStyle = t.PlaceholderStyle.Foreground(subduedHighlightColor)
 
 	return sendModel{
-		client:        client.New(),
+		client:        client.Get(),
 		mdns:          mdns.Get(),
 		titleStyle:    titleStyle.Margin(0, 2),
 		disableKeymap: true, // initially dirNavModel will handle key events
@@ -139,7 +140,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				m.customInstance = conf.Share.InstanceName
 				lch, dch := make(chan server.Log, 10), make(chan int, 1)
 				m.server = server.New(conf.Share.StoppableInstance, lch, dch)
-				return m, tea.Sequence(handleExtSendCh{lch, dch}.cmd, m.publishInstanceAndStartServer())
+				extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
+				return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
 			}
 
 		case "Q", "q":
@@ -162,15 +164,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		}
 
 	case spaceFocusSwitchMsg:
-		if currentFocus == local {
-			m.titleStyle = m.titleStyle.
-				Background(highlightColor).
-				Foreground(subduedHighlightColor)
-		} else {
-			m.titleStyle = m.titleStyle.
-				Background(grayColor).
-				Foreground(highlightColor)
-		}
+		m.updateTitleStyleAsFocus()
 
 	case sendFilesMsg:
 		m.files = msg
@@ -179,9 +173,12 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		m.isServing = true
 
 	case instanceShutdownMsg:
-		m.isSelected, m.isServing = false, false
+		m.isSelected, m.isServing, m.isShutdown = false, false, true
 		m.instanceState = idle
-		return m, localChildSwitchMsg{child: dirNav, focus: true}.cmd
+
+	case serverLogsTimeoutMsg:
+		m.isShutdown = false
+		return m, msgToCmd(localChildSwitchMsg{child: dirNav, focus: currentFocus == local})
 
 	case shutdownReqWhenNotIdleMsg:
 		return m, tea.Batch(m.notifyForShutdownReqWhenNotIdle(), m.showShutdownReqWhenNotIdleAlert(string(msg)))
@@ -202,16 +199,17 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			m.isSelected = true
 			lch, dch := make(chan server.Log, 10), make(chan int, 1)
 			m.server = server.New(m.getConfig().Share.StoppableInstance, lch, dch)
-			return m, tea.Sequence(handleExtSendCh{lch, dch}.cmd, m.publishInstanceAndStartServer())
+			extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
+			return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
 
 		case notResponding:
 			m.isSelected = false
 			m.instanceState = idle
-			return m, errMsg{
+			return m, msgToCmd(errMsg{
 				errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
 				errStr:    "Request failed, the server instance is not responding, it might be down.",
 				fatal:     false,
-			}.cmd
+			})
 
 		case requestRejected, serving:
 			m.isSelected = false
@@ -231,8 +229,7 @@ func (m sendModel) View() string {
 		m.renderInstanceSelectionForm(),
 		customSendHelp(m.showHelp).Width(smallContainerW() - 2).Render(),
 	}
-	view := lipgloss.JoinVertical(lipgloss.Top, views...)
-	return smallContainerStyle.Width(smallContainerW()).Render(view)
+	return lipgloss.JoinVertical(lipgloss.Top, views...)
 }
 
 func (m *sendModel) handleUpdate(msg tea.Msg) tea.Cmd {
@@ -243,6 +240,18 @@ func (m *sendModel) handleUpdate(msg tea.Msg) tea.Cmd {
 
 func (m *sendModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
+}
+
+func (m *sendModel) updateTitleStyleAsFocus() {
+	if currentFocus == local {
+		m.titleStyle = m.titleStyle.
+			Background(highlightColor).
+			Foreground(subduedHighlightColor)
+	} else {
+		m.titleStyle = m.titleStyle.
+			Background(grayColor).
+			Foreground(highlightColor)
+	}
 }
 
 func (m sendModel) renderTitle() string {
@@ -265,7 +274,7 @@ func (m sendModel) renderStatusBar() string {
 func (m sendModel) renderInstanceSelectionForm() string {
 	h := workableH() - 2 - lipgloss.Height(customSendHelp(m.showHelp).String())
 	infoTxt := m.renderInfoText()
-	if m.isSelected {
+	if m.isSelected || m.isShutdown {
 		s := lipgloss.JoinVertical(lipgloss.Left, m.renderSelectedInstanceHeader(), infoTxt)
 		return lipgloss.PlaceVertical(h, lipgloss.Center, s)
 	}
@@ -277,10 +286,11 @@ func (m sendModel) renderInstanceSelectionForm() string {
 
 func (m sendModel) renderFormTitle() string {
 	title := "SELECT SERVER INSTANCE!"
+	title = runewidth.Truncate(title, smallContainerW()-4, "…")
 	return lipgloss.NewStyle().
 		Foreground(highlightColor).
 		Underline(true).
-		Margin(2).
+		Margin(2, 1).
 		Render(title)
 }
 
@@ -300,16 +310,18 @@ func (m sendModel) renderInfoText() string {
 	case noInstance:
 	}
 
-	if m.instanceState != idle || m.isServing {
+	if m.instanceState != idle || m.isServing || m.isShutdown {
 		sb.WriteString("\n\n")
-		divider := strings.Repeat("—", max(0, smallContainerW()-6))
-		sb.WriteString(divider)
+		divider := strings.Repeat("—", max(0, smallContainerW()-4))
+		sb.WriteString(baseStyle.Foreground(subduedHighlightColor).Render(divider))
 		sb.WriteString("\n\n")
 		baseStyle = baseStyle.Foreground(highlightColor).Blink(true)
 	}
 
 	if m.isServing {
 		sb.WriteString(baseStyle.UnsetBlink().Render("The server instance is up & running… Hit “Q/q” to shutdown."))
+	} else if m.isShutdown {
+		sb.WriteString(baseStyle.Foreground(highlightColor).Blink(true).Render("Shutting down the server instance, please wait…"))
 	} else {
 		switch m.instanceState {
 		case idle, notResponding, available:
@@ -317,7 +329,7 @@ func (m sendModel) renderInfoText() string {
 			sb.WriteString(baseStyle.Foreground(yellowColor).Render("Instance already serving, requesting shutdown…"))
 		case serving:
 			currentOwner := m.getInstanceOwner(m.getInstance())
-			msg := fmt.Sprintf("Server is currently serving files for %q. They're notified of your request, Please either wait or switch instance.", currentOwner)
+			msg := fmt.Sprintf("Server is currently serving indexes for %q. They're notified of your request, Please either wait or switch instance.", currentOwner)
 			sb.WriteString(baseStyle.Foreground(redColor).Render(msg))
 		case requestAccepted:
 			currentOwner := m.getInstanceOwner(m.getInstance())
@@ -334,7 +346,7 @@ func (m sendModel) renderInfoText() string {
 		Foreground(midHighlightColor).
 		Width(smallContainerW()-smallContainerStyle.GetHorizontalFrameSize()).
 		Align(lipgloss.Center).
-		Padding(0, 2).
+		Padding(0, 1).
 		Render(sb.String())
 }
 
@@ -350,7 +362,7 @@ func (m sendModel) renderInstanceBtns() string {
 		Foreground(subduedHighlightColor).
 		Faint(true)
 
-	w := smallContainerW() - 24 // -24 experimental
+	w := smallContainerW() - 20 // -24 experimental
 	defaultBtn := runewidth.Truncate(defaultInstance.string(), w, "…")
 	customBtn := runewidth.Truncate(customInstance.string(), w, "…")
 
@@ -365,10 +377,17 @@ func (m sendModel) renderInstanceBtns() string {
 	}
 
 	btns := lipgloss.JoinHorizontal(lipgloss.Center, defaultBtn, " ", customBtn)
-	return lipgloss.NewStyle().Margin(0, 2).Render(btns)
+	return lipgloss.NewStyle().Margin(0, 1).Render(btns)
 }
 
 func (m sendModel) renderSelectedInstanceHeader() string {
+	style := lipgloss.NewStyle().
+		Margin(2, 1, 1, 1).
+		Padding(0, 2).
+		Align(lipgloss.Center).
+		Background(subduedHighlightColor).
+		Foreground(highlightColor).
+		Width(smallContainerW() - 4)
 	var s string
 	switch m.btnIdx {
 	case noInstance:
@@ -377,23 +396,18 @@ func (m sendModel) renderSelectedInstanceHeader() string {
 	case customInstance:
 		s = "CUSTOM SERVER INSTANCE!"
 	}
-	return lipgloss.NewStyle().
-		Margin(2, 2, 1, 2).
-		Padding(0, 2).
-		Align(lipgloss.Center).
-		Background(subduedHighlightColor).
-		Foreground(highlightColor).
-		Width(smallContainerW() - 6).
-		Render(s)
+	w := smallContainerW() - smallContainerStyle.GetHorizontalFrameSize() - style.GetHorizontalFrameSize()
+	s = runewidth.Truncate(s, w, "…")
+	return style.Render(s)
 }
 
 func (m *sendModel) confirmEsc() tea.Cmd {
 	selBtn := positive
 	header := "CANCEL SHARING?"
-	body := "This will delete all the processed files, and you'll return to file selection."
+	body := "This will delete all the processed indexes, and you'll return to file selection."
 	positiveFunc := func() tea.Cmd {
 		m.isSelected, m.isServing = false, false
-		return tea.Batch(localChildSwitchMsg{child: dirNav, focus: true}.cmd, m.deleteTempFiles())
+		return tea.Batch(msgToCmd(localChildSwitchMsg{child: dirNav, focus: true}), m.deleteTempFiles())
 	}
 	return alertDialogMsg{
 		header:         header,
@@ -406,7 +420,7 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 }
 
 func (m sendModel) showShutdownReqWhenNotIdleAlert(reqBy string) tea.Cmd {
-	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving files. Consider shutting down when idle.", reqBy)
+	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving indexes. Consider shutting down when idle.", reqBy)
 	return alertDialogMsg{
 		header:        "SHUTDOWN REQUEST",
 		body:          body,
@@ -473,7 +487,7 @@ func (m sendModel) notifyInstanceAvailability() tea.Cmd {
 			case <-m.server.StopCtx.Done():
 				return nil // server stopped, exit the loop
 			default:
-				m.mdns.NotifyOnChange()
+				<-m.mdns.NotifyOnChange()
 				if m.isInstanceAvailable(instance) {
 					return available
 				}
@@ -525,7 +539,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 		return instanceShutdownMsg{}
 	}
 	cmds[2] = m.notifyForShutdownReqWhenNotIdle()
-	cmds[3] = instanceServingCmd
+	cmds[3] = msgToCmd(instanceServingMsg{})
 	return tea.Batch(cmds[:]...)
 }
 
@@ -538,11 +552,11 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 					shutdownBgTasks()
 					return tea.Quit
 				}
-				return instanceShutdownCmd
+				return msgToCmd(instanceShutdownMsg{})
 			}
 			return alertDialogMsg{
 				header:         "FORCE SHUTDOWN?",
-				body:           "The server is currently serving files, do you want to force shutdown, ongoing downloads will abruptly halt.",
+				body:           "The server is currently serving indexes, do you want to force shutdown, ongoing downloads will abruptly halt.",
 				positiveBtnTxt: "YUP!",
 				negativeBtnTxt: "NOPE",
 				cursor:         positive,
@@ -561,7 +575,7 @@ func (m *sendModel) stopOwnedServerInstance(instance string) tea.Cmd {
 	return func() tea.Msg {
 		statusCode, err := m.client.StopServer(instance)
 		if err != nil {
-			return tea.Batch(instanceStateCmd(idle), errMsg{err: err, fatal: false}.cmd)
+			return tea.Batch(instanceStateCmd(idle), msgToCmd(errMsg{err: err, fatal: false}))
 		}
 		switch statusCode {
 		case http.StatusAccepted:
@@ -591,7 +605,7 @@ func (m sendModel) deleteTempFiles() tea.Cmd {
 		for _, p := range m.files {
 			if strings.HasPrefix(p, os.TempDir()) {
 				if err := os.Remove(p); err != nil {
-					slog.Error("deleting temp files", "err", err)
+					slog.Error("deleting temp indexes", "err", err)
 				}
 			}
 		}

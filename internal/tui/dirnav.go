@@ -114,7 +114,7 @@ func initialDirNavModel() dirNavModel {
 
 func (m dirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	// textInput model will capture key events when in filtering state
-	if m.dirList.FilterState() == list.Filtering {
+	if m.dirList.FilterState() == list.Filtering && msg.String() != "ctrl+c" {
 		return true
 	}
 	switch msg.String() {
@@ -134,7 +134,6 @@ func (m dirNavModel) Init() tea.Cmd {
 }
 
 func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
-
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -144,7 +143,20 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 		if m.disableKeymap {
 			return m, nil
 		}
+
+		// this is a valid case because on startup,
+		// we want no extended dir (home space must be visible)
+		if m.dirList.Cursor() == -1 {
+			m.dirList.Select(0)
+		}
+
 		switch msg.String() {
+
+		case "up", "down":
+			if m.dirList.FilterState() != list.Filtering {
+				return m, m.extendDir(msg)
+			}
+
 		case "enter":
 			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
 				selDir := m.dirList.SelectedItem().FilterValue()
@@ -165,12 +177,7 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 			if m.dirList.FilterState() != list.Filtering {
 				selDir := m.dirList.SelectedItem().FilterValue()
 				selPath := filepath.Join(m.curDirPath, selDir)
-				// double spaceBar action is valid
-				if m.prevSelDir == m.dirList.SelectedItem().FilterValue() {
-					return m, extendDirMsg{selPath, true}.cmd
-				}
-				m.prevSelDir = selDir // registering first spaceBar action
-				return m, extendDirMsg{selPath, false}.cmd
+				return m, msgToCmd(extendDirMsg{selPath, true})
 			}
 
 		case "?":
@@ -199,7 +206,12 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 		if m.dirList.IsFiltered() {
 			m.dirList.ResetFilter()
 		}
-		return m, m.populateDirList(msg.entries)
+		return m, tea.Sequence(m.populateDirList(msg.entries), msgToCmd(dirListUpdatedMsg{}))
+
+	case dirListUpdatedMsg:
+		if m.dirList.FilterState() != list.Filtering {
+			return m, m.extendDir(msg)
+		}
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == local {
@@ -209,7 +221,7 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 			m.dirList.ResetFilter()
 			m.dirList.KeyMap = list.KeyMap{} // disable list keymap
 		}
-		m.setTitleStylesAsFocus()
+		m.updateTitleStyleAsFocus()
 
 	case fsErrMsg:
 		return m, m.createDirListStatusMsg(string(msg), redColor)
@@ -229,8 +241,7 @@ func (m dirNavModel) View() string {
 	subW := m.dirList.Styles.TitleBar.GetHorizontalFrameSize() // subtract Width
 	subW += lipgloss.Width(tail)
 	m.dirList.Title = runewidth.Truncate(m.dirList.Title, m.dirList.Width()-subW, "…")
-	s := lipgloss.JoinVertical(lipgloss.Top, m.dirList.View(), ht.Render())
-	return smallContainerStyle.Width(smallContainerW()).Render(s)
+	return lipgloss.JoinVertical(lipgloss.Top, m.dirList.View(), ht.Render())
 }
 
 func newDirList() list.Model {
@@ -338,8 +349,7 @@ func customDirListHelpTable(show bool) *table.Table {
 	} else {
 		rows = [][]string{
 			{"/", "filter"},
-			{"space", "extend dir"},
-			{"2x(space)", "extend dir focused"},
+			{"space", "extend dir (focused)"},
 			{"enter", "into dir"},
 			{"backspace", "out of dir"},
 			{"←/→ OR l/h", "shuffle pages"},
@@ -386,11 +396,11 @@ func (dirNavModel) readDir(dir string, action dirAction) tea.Cmd {
 			if errors.Is(err, fs.ErrNotExist) {
 				return fsErrMsg("No such dir!")
 			}
-			return errMsg{
+			return msgToCmd(errMsg{
 				errHeader: "APPLICATION ERROR",
 				err:       fmt.Errorf("reading directory %q: %v", dir, err),
 				errStr:    "Unable to processed directory contents",
-			}.cmd
+			})
 		}
 		dirEntries := make([]string, 0)
 		for _, e := range entries {
@@ -412,6 +422,21 @@ func (m *dirNavModel) populateDirList(dirs []string) tea.Cmd {
 		items[i] = dirItem(dir)
 	}
 	return m.dirList.SetItems(items)
+}
+
+func (m *dirNavModel) extendDir(msg tea.Msg) tea.Cmd {
+	cmd, selDir := m.updateDirListAndGetSelectedDir(msg)
+	selPath := filepath.Join(m.curDirPath, selDir)
+	extDirCmd := msgToCmd(extendDirMsg{selPath, false})
+	// handleDirListUpdate so it can handle up/down key events
+	return tea.Batch(extDirCmd, cmd)
+}
+
+func (m *dirNavModel) updateDirListAndGetSelectedDir(msg tea.Msg) (tea.Cmd, string) {
+	var cmd tea.Cmd
+	m.dirList, cmd = m.dirList.Update(msg)
+	selDir := m.dirList.SelectedItem().FilterValue()
+	return cmd, selDir
 }
 
 func (m *dirNavModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {
@@ -456,7 +481,7 @@ func (m *dirNavModel) createDirListStatusMsg(s string, c lipgloss.AdaptiveColor)
 	return m.dirList.NewStatusMessage(style.Render(s))
 }
 
-func (m *dirNavModel) setTitleStylesAsFocus() {
+func (m *dirNavModel) updateTitleStyleAsFocus() {
 	s := m.dirList.Styles.Title.
 		Background(grayColor).
 		Foreground(highlightColor)
@@ -477,8 +502,4 @@ func (m *dirNavModel) updateKeymap(disable bool) {
 		m.dirList.DisableQuitKeybindings()
 	}
 	m.disableKeymap = disable
-}
-
-func (m dirNavModel) grantSpaceFocusSwitch() bool {
-	return true
 }

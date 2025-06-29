@@ -19,21 +19,16 @@ type errMsg struct {
 	fatal bool
 }
 
-func (msg errMsg) cmd() tea.Msg { return msg }
-
 type fsErrMsg string
 
-func (msg fsErrMsg) cmd() tea.Msg { return msg }
+// spaceFocusSwitchMsg manages child switching using tab & shift+tab
+type spaceFocusSwitchMsg struct{}
 
-// extendDirMsg is sent by the dirNavModel to signal extDirNavModel
-// to extend selected directory, and whether to make the table focused or not
-type extendDirMsg struct {
-	path string
-	// marker to decide whether to make the extDirNavModel.extDirTable table focused
+type localChildSwitchMsg struct {
+	child localChild
+	// marker to decide whether to make the local child focused
 	focus bool
 }
-
-func (msg extendDirMsg) cmd() tea.Msg { return msg }
 
 // extensionChildSwitchMsg is sent by extDirNavModel to extensionSpaceModel to signal
 // the title change and whether to make it focused
@@ -43,20 +38,24 @@ type extensionChildSwitchMsg struct {
 	focus bool
 }
 
-func (msg extensionChildSwitchMsg) cmd() tea.Msg { return msg }
-
-type localChildSwitchMsg struct {
-	child localChild
-	// marker to decide whether to make the local child focused
+type remoteChildSwitchMsg struct {
+	child remoteChild
 	focus bool
 }
 
-func (msg localChildSwitchMsg) cmd() tea.Msg { return msg }
+// extendDirMsg is sent by the dirNavModel to signal extDirNavModel
+// to extend selected directory, and whether to make the table focused or not
+type extendDirMsg struct {
+	path string
+	// marker to decide whether to make the extDirNavModel.extDirTable table focused
+	focus bool
+}
 
-// spaceFocusSwitchMsg manages child switching using tab & shift+tab
-type spaceFocusSwitchMsg struct{}
+type resetExtDirTableSelectionsMsg struct{}
 
-func spaceFocusSwitchCmd() tea.Msg { return spaceFocusSwitchMsg{} }
+type resetExtFileIndexTableSelectionsMsg struct{}
+
+type dirListUpdatedMsg struct{}
 
 type processSelectionsMsg struct {
 	parentPath  string
@@ -64,17 +63,13 @@ type processSelectionsMsg struct {
 	dirs, files int
 }
 
-func (msg processSelectionsMsg) cmd() tea.Msg { return msg }
+type downloadSelectionsMsg struct {
+	files []string
+}
 
 // preferencesSavedMsg signals the changes to the preferences are saved,
 // bool indicates whether to inactivate the preferences model or not
 type preferencesSavedMsg bool
-
-func preferencesSavedCmd(exit bool) tea.Cmd {
-	return func() tea.Msg {
-		return preferencesSavedMsg(exit)
-	}
-}
 
 type progressMsg uint64
 
@@ -90,25 +85,11 @@ type serverLogMsg server.Log
 
 type rerenderPreferencesMsg struct{}
 
-func rerenderPreferencesCmd() tea.Msg { return rerenderPreferencesMsg{} }
-
 type sendFilesMsg []string
-
-func (f sendFilesMsg) cmd() tea.Msg {
-	return f
-}
 
 type instanceServingMsg struct{}
 
-func instanceServingCmd() tea.Msg {
-	return instanceServingMsg{}
-}
-
 type instanceShutdownMsg struct{}
-
-func instanceShutdownCmd() tea.Msg {
-	return instanceShutdownMsg{}
-}
 
 type shutdownReqWhenNotIdleMsg string
 
@@ -117,8 +98,18 @@ type handleExtSendCh struct {
 	activeDownCh <-chan int
 }
 
-func (msg handleExtSendCh) cmd() tea.Msg {
-	return msg
-}
-
 type activeDownsMsg int
+
+type serverLogsTimeoutMsg struct{}
+
+type instanceAvailabilityMsg bool
+
+type fetchFileIndexesMsg string // string hold the instance name
+
+type fileIndexesMsg []fileIndex
+
+func msgToCmd[t tea.Msg](msg t) tea.Cmd {
+	return func() tea.Msg {
+		return msg
+	}
+}

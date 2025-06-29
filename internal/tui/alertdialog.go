@@ -51,8 +51,9 @@ type alertDialogModel struct {
 
 func initialAlertDialogModel() alertDialogModel {
 	return alertDialogModel{
-		cursor: positive,
-		timer:  timer.NewWithInterval(5*time.Second, 100*time.Millisecond),
+		cursor:        positive,
+		timer:         timer.NewWithInterval(5*time.Second, 100*time.Millisecond),
+		disableKeymap: true,
 	}
 }
 
@@ -126,9 +127,9 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 				d = msg.alertDuration
 			}
 			m.timer = timer.NewWithInterval(d, 100*time.Millisecond)
-			return m, tea.Batch(m.timer.Init(), spaceFocusSwitchCmd)
+			return m, tea.Batch(m.timer.Init(), msgToCmd(spaceFocusSwitchMsg{}))
 		}
-		return m, spaceFocusSwitchCmd
+		return m, msgToCmd(spaceFocusSwitchMsg{})
 
 	case timer.TickMsg:
 		if msg.ID == m.timer.ID() {
@@ -138,11 +139,13 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 		}
 
 	case timer.TimeoutMsg:
-		var cmd tea.Cmd
-		if m.escFunc != nil {
-			cmd = m.escFunc()
+		if msg.ID == m.timer.ID() {
+			var cmd tea.Cmd
+			if m.escFunc != nil {
+				cmd = m.escFunc()
+			}
+			return m, tea.Batch(cmd, m.hide())
 		}
-		return m, tea.Batch(cmd, m.hide())
 	}
 
 	return m, nil
@@ -197,7 +200,7 @@ func (m *alertDialogModel) hide() tea.Cmd {
 	m.header, m.body = "", ""
 	m.positiveFunc, m.negativeFunc = nil, nil
 	currentFocus = m.prevFocus
-	return spaceFocusSwitchCmd
+	return msgToCmd(spaceFocusSwitchMsg{})
 }
 
 func (m alertDialogModel) isTimerAlert() bool {

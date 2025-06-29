@@ -62,7 +62,7 @@ func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 		m.activeChild = msg.child
 		if msg.focus {
 			currentFocus = local
-			return m, tea.Batch(spaceFocusSwitchCmd, m.handleChildModelUpdate(msg))
+			return m, tea.Batch(msgToCmd(spaceFocusSwitchMsg{}), m.handleChildModelUpdate(msg))
 		}
 	}
 
@@ -70,16 +70,18 @@ func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 }
 
 func (m localSpaceModel) View() string {
+	var v string
 	switch m.activeChild {
 	case dirNav:
-		return m.dirNavigation.View()
+		v = m.dirNavigation.View()
 	case processFiles:
-		return m.processFiles.View()
+		v = m.processFiles.View()
 	case send:
-		return m.send.View()
+		v = m.send.View()
 	default:
-		return ""
+		v = ""
 	}
+	return smallContainerStyle.Width(smallContainerW()).Render(v)
 }
 
 func (m *localSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {

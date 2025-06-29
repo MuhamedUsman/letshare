@@ -58,6 +58,7 @@ func newZipTracker(parentCtx context.Context, p <-chan uint64, l <-chan string) 
 		logs:        make([]string, 0),
 		progressCh:  p,
 		logCh:       l,
+		state:       processing,
 	}
 }
 
@@ -112,9 +113,10 @@ func initialProcessFilesModel() processFilesModel {
 		progress.WithoutPercentage(),
 	)
 	return processFilesModel{
-		zipTracker: new(zipTracker),
-		titleStyle: titleStyle.Margin(0, 2),
-		progress:   p,
+		zipTracker:    &zipTracker{state: -1},
+		titleStyle:    titleStyle.Margin(0, 2),
+		progress:      p,
+		disableKeymap: true,
 	}
 }
 
@@ -130,7 +132,7 @@ func (m processFilesModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m processFilesModel) Init() tea.Cmd {
-	return m.progress.Init()
+	return nil
 }
 
 func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
@@ -156,15 +158,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		}
 
 	case spaceFocusSwitchMsg:
-		if currentFocus == local {
-			m.titleStyle = m.titleStyle.
-				Background(highlightColor).
-				Foreground(subduedHighlightColor)
-		} else {
-			m.titleStyle = m.titleStyle.
-				Background(grayColor).
-				Foreground(highlightColor)
-		}
+		m.updateTitleStyleAsFocus()
 
 	case processSelectionsMsg:
 		m.selections = &selections{
@@ -185,7 +179,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 			cfg, err = config.Load()
 		}
 		if err != nil {
-			return m, errMsg{err: err, fatal: true}.cmd
+			return m, msgToCmd(errMsg{err: err, fatal: true})
 		}
 
 		if !cfg.Share.ZipFiles && m.selections.dirs == 0 {
@@ -193,20 +187,22 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 			for i, f := range m.selections.filenames {
 				files[i] = filepath.Join(m.selections.rootPath, f)
 			}
-			return m, tea.Batch(localChildSwitchMsg{child: send, focus: true}.cmd, files.cmd)
+
+			return m, tea.Batch(msgToCmd(localChildSwitchMsg{child: send, focus: true}), msgToCmd(files))
 		}
 
 		return m, tea.Batch(
+			m.progress.Init(),
 			m.trackProgress(),
 			m.trackLogs(),
 			m.processFiles(cfg, progCh, logCh, msg),
-			localChildSwitchMsg{child: processFiles, focus: true}.cmd,
+			msgToCmd(localChildSwitchMsg{child: processFiles, focus: true}),
 		)
 
 	case progressMsg:
 		m.zipTracker.updateProgress(uint64(msg))
 		percentage := float64(m.zipTracker.processed) / float64(m.zipTracker.totalSize)
-		return m, tea.Batch(m.trackProgress(), m.progress.SetPercent(percentage))
+		return m, tea.Batch(m.progress.Init(), m.trackProgress(), m.progress.SetPercent(percentage))
 
 	case zippingLogMsg:
 		l := filepath.Base(string(msg))
@@ -218,14 +214,16 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.zipTracker.processed = m.zipTracker.totalSize
 		m.zipTracker.state = done
 		m.updateDimensions()
-		return m, tea.Batch(localChildSwitchMsg{child: send, focus: true}.cmd, sendFilesMsg(m.zipTracker.archives).cmd)
+		sendFilesCmd := msgToCmd(sendFilesMsg(m.zipTracker.archives))
+		return m, tea.Batch(msgToCmd(localChildSwitchMsg{child: send, focus: true}), sendFilesCmd)
 
 	case zippingCanceledMsg:
 		m.zipTracker.state = canceled
-		return m, localChildSwitchMsg{child: dirNav, focus: true}.cmd
+		return m, msgToCmd(localChildSwitchMsg{child: dirNav, focus: true})
 
 	case zippingErrMsg:
-		return m, tea.Batch(m.showZippingErrAlert(msg), localChildSwitchMsg{child: dirNav, focus: true}.cmd)
+		m.zipTracker.state = done
+		return m, tea.Batch(m.showZippingErrAlert(msg), msgToCmd(localChildSwitchMsg{child: dirNav, focus: true}))
 
 	}
 
@@ -233,23 +231,33 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 }
 
 func (m processFilesModel) View() string {
-	var v string
 	components := []string{
 		m.renderTitle(),
 		m.renderStatusBar(),
 		m.renderLogsTitle(),
 		m.renderLogs(),
 		m.renderProgress(),
-		customProcessFilesTable(m.showHelp).Width(smallContainerW() - 2).Render(),
+		customProcessFilesHelp(m.showHelp).Width(smallContainerW() - smallContainerStyle.GetHorizontalFrameSize()).Render(),
 	}
-	v = lipgloss.JoinVertical(lipgloss.Top, components...)
-	return smallContainerStyle.Width(smallContainerW()).Render(v)
+	return lipgloss.JoinVertical(lipgloss.Top, components...)
 }
 
 func (m *processFilesModel) handleProgressModelUpdate(msg tea.Msg) tea.Cmd {
 	newModel, cmd := m.progress.Update(msg)
 	m.progress = newModel.(progress.Model)
 	return cmd
+}
+
+func (m *processFilesModel) updateTitleStyleAsFocus() {
+	if currentFocus == local {
+		m.titleStyle = m.titleStyle.
+			Background(highlightColor).
+			Foreground(subduedHighlightColor)
+	} else {
+		m.titleStyle = m.titleStyle.
+			Background(grayColor).
+			Foreground(highlightColor)
+	}
 }
 
 func (m *processFilesModel) updateKeymap(disable bool) {
@@ -264,7 +272,7 @@ func (m *processFilesModel) updateDimensions() {
 		m.renderStatusBar(),
 		m.renderLogsTitle(),
 		m.renderProgress(),
-		customProcessFilesTable(m.showHelp).String(),
+		customProcessFilesHelp(m.showHelp).String(),
 	}
 	subH += lipgloss.Height(strings.Join(components, "\n"))
 	m.zipTracker.setLogsLength(max(0, workableH()-subH))
@@ -291,7 +299,7 @@ func (m processFilesModel) renderStatusBar() string {
 	style := lipgloss.NewStyle().
 		Foreground(highlightColor).
 		Faint(true).
-		Margin(1, 1, 0, 2).
+		Margin(1, 2).
 		Italic(true)
 	s = runewidth.Truncate(s, smallContainerW()-style.GetHorizontalFrameSize()-1, "…")
 	return style.Render(s)
@@ -302,7 +310,6 @@ func (m processFilesModel) renderLogsTitle() string {
 	t = runewidth.Truncate(t, smallContainerW()-titleStyle.GetHorizontalFrameSize()-2, "…")
 	return titleStyle.Background(subduedHighlightColor).
 		Width(smallContainerW() - titleStyle.GetHorizontalFrameSize()).
-		MarginTop(1).
 		Align(lipgloss.Center).
 		UnsetItalic().
 		Render(t)
@@ -429,7 +436,7 @@ func (m processFilesModel) trackLogs() tea.Cmd {
 func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
 	selBtn := positive
 	header := "STOP ZIPPING?"
-	body := "Do you want to stop zipping the files, progress will be lost."
+	body := "Do you want to stop zipping the indexes, progress will be lost."
 	positiveFunc := func() tea.Cmd {
 		m.zipTracker.state = canceling
 		m.zipTracker.cancel()
@@ -462,7 +469,7 @@ func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
 			b = fmt.Sprintf("Unexpected error occurred while accessing %q.", filepath.ToSlash(pe.Path))
 		}
 	} else {
-		b = "Unexpected error occurred while zipping files."
+		b = "Unexpected error occurred while zipping indexes."
 	}
 	return alertDialogMsg{header: "ZIPPING ERROR", body: b}.cmd
 }
@@ -498,7 +505,7 @@ func splitToDirsAndFiles(root string, filenames ...string) (dirs, files []string
 	return dirs, files, nil
 }
 
-func customProcessFilesTable(show bool) *table.Table {
+func customProcessFilesHelp(show bool) *table.Table {
 	baseStyle := lipgloss.NewStyle()
 	var rows [][]string
 	if !show {

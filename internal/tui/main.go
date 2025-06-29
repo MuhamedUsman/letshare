@@ -12,7 +12,6 @@ import (
 type focusSpace int
 
 const (
-	// No focusSpace
 	local focusSpace = iota
 	extension
 	remote
@@ -103,7 +102,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			// don't show preferences if the confirmation dialog is active
 			if !m.confirmation.active {
-				return m, extensionChildSwitchMsg{child: preference, focus: true}.cmd
+				return m, msgToCmd(extensionChildSwitchMsg{child: preference, focus: true})
 			}
 
 		case "tab":
@@ -112,15 +111,16 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if currentFocus > remote {
 				currentFocus = local
 			}
-			return m, spaceFocusSwitchCmd
+			return m, msgToCmd(spaceFocusSwitchMsg{})
 
 		case "shift+tab":
 			currentFocus--
 			if currentFocus < local {
 				currentFocus = remote
 			}
-			return m, spaceFocusSwitchCmd
+			return m, msgToCmd(spaceFocusSwitchMsg{})
 
+			// centralizing the quit logic
 		case "ctrl+c":
 			if m.localSpace.send.isServing {
 				return m, m.localSpace.send.shutdownServer(true)
@@ -128,6 +128,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state := m.localSpace.processFiles.zipTracker.state
 			if state == processing || state == canceling {
 				return m, m.localSpace.processFiles.confirmStopZipping(true)
+			}
+			if m.localSpace.activeChild == send {
+				m.localSpace.send.deleteTempFiles()
 			}
 			shutdownBgTasks()
 			return m, tea.Quit
@@ -149,11 +152,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MainModel) View() string {
-	c := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
+	v := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
 	if m.confirmation.active {
-		c = overlay.Place(lipgloss.Center, lipgloss.Center, c, m.confirmation.View())
+		v = overlay.Place(lipgloss.Center, lipgloss.Center, v, m.confirmation.View())
 	}
-	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(c)
+	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(v)
 }
 
 func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
@@ -168,7 +171,7 @@ func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
 func (m *MainModel) updateKeymapsByFocus() {
 	m.localSpace.updateKeymap(currentFocus != local)
 	m.extensionSpace.updateKeymap(currentFocus != extension)
-	m.remoteSpace.disableKeymap = currentFocus != remote
+	m.remoteSpace.updateKeymap(currentFocus != remote)
 	m.confirmation.disableKeymap = currentFocus != confirmation
 }
 
