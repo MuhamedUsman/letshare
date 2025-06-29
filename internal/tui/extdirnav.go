@@ -47,9 +47,9 @@ type dirContents struct {
 	dirs, files      int
 }
 
-// filterDirContent uses the sahilm/fuzzy to filter through the list.
+// filter uses the sahilm/fuzzy to filter through the list.
 // This is set by default.
-func filterDirContent(term string, targets []string) []int {
+func filter(term string, targets []string) []int {
 	matches := fuzzy.Find(term, targets)
 	result := make([]int, len(matches))
 	for i, r := range matches {
@@ -73,7 +73,12 @@ func initialExtDirNavModel() extDirNavModel {
 		table.WithStyles(customTableStyles),
 		table.WithColumns(getTableCols(0)),
 	)
-	return extDirNavModel{extDirTable: t, filter: newFilterInputModel(), titleStyle: titleStyle}
+	return extDirNavModel{
+		extDirTable:   t,
+		filter:        newFilterInputModel(),
+		titleStyle:    titleStyle,
+		disableKeymap: true,
+	}
 }
 
 func getTableCols(tableWidth int) []table.Column {
@@ -99,7 +104,7 @@ func getTableCols(tableWidth int) []table.Column {
 
 func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	// textInput model captures keys, so we need to handle it here
-	if m.filterState == filtering {
+	if m.filterState == filtering && msg.String() != "ctrl+c" {
 		return true
 	}
 	switch msg.String() {
@@ -203,11 +208,11 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		}
 
 	case extendDirMsg:
+		m.focusOnExtend = msg.focus
 		// the user is trying to extend a new dir, but the previous extended dir has selected items
 		if m.getSelectionCount() > 0 {
 			return m, m.confirmDiscardSelOnNewExtDir(msg)
 		}
-		m.focusOnExtend = msg.focus
 		return m, m.readDir(msg.path)
 
 	case dirContents:
@@ -221,7 +226,10 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		}
 		m.extDirTable.SetCursor(0)
 		// if table is focused, then extensionSpace child also needs to be focused
-		return m, extensionChildSwitchMsg{extDirNav, m.focusOnExtend}.cmd
+		return m, msgToCmd(extensionChildSwitchMsg{extDirNav, m.focusOnExtend})
+
+	case resetExtDirTableSelectionsMsg:
+		m.selectAll(false)
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
@@ -255,14 +263,14 @@ func (m extDirNavModel) View() string {
 	status = extStatusBarStyle.Render(status)
 
 	if m.filter.Focused() {
-		filter := m.filter.View()
+		f := m.filter.View()
 		c := extDirNavTableFilterContainerStyle.Width(m.filter.Width)
 		// Match container width to input field width, but increment by 1 when text exceeds
 		// container width to accommodate cursor. This prevents initial centering issues.
 		if utf8.RuneCountInString(m.filter.Value()) >= c.GetWidth() {
 			c = c.Width(c.GetWidth() + 1)
 		}
-		return lipgloss.JoinVertical(lipgloss.Center, c.Render(filter), status, m.extDirTable.View(), help.Render())
+		return lipgloss.JoinVertical(lipgloss.Center, c.Render(f), status, m.extDirTable.View(), help.Render())
 	}
 	return lipgloss.JoinVertical(lipgloss.Center, title, status, m.extDirTable.View(), help.Render())
 }
@@ -329,11 +337,11 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 			if errors.Is(err, fs.ErrNotExist) {
 				return fsErrMsg("No such dir!")
 			}
-			return errMsg{
+			return msgToCmd(errMsg{
 				errHeader: "APPLICATION ERROR",
 				err:       fmt.Errorf("reading directory %q: %v", path, err),
 				errStr:    "Unable to processed directory contents",
-			}.cmd
+			})
 		}
 
 		dc := dirContents{parentDir: path, contents: make([]dirContent, len(entries))}
@@ -344,7 +352,7 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 			// name without ext
 			name := strings.TrimSuffix(entry.Name(), filetype)
 			filetype = strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
-			// for files like .gitignore
+			// for indexes like .gitignore
 			if strings.Count(entry.Name(), ".") == 1 &&
 				strings.HasPrefix(entry.Name(), ".") {
 				name = entry.Name()
@@ -451,16 +459,10 @@ func (m *extDirNavModel) handleFiltering() tea.Cmd {
 	for i, content := range m.dirContents.contents {
 		toFilter[i] = content.name
 	}
-	indices := filterDirContent(m.filter.Value(), toFilter)
+	indices := filter(m.filter.Value(), toFilter)
 	m.dirContents.filteredContents = indices
 	m.populateTable(m.dirContents.contents)
 	return nil
-}
-
-func (m *extDirNavModel) resetSelections() {
-	for i := range m.dirContents.contents {
-		m.dirContents.contents[i].selection = false
-	}
 }
 
 func (m extDirNavModel) getStatus() string {
@@ -525,8 +527,6 @@ func (m *extDirNavModel) confirmDiscardSelOnNewExtDir(msg extendDirMsg) tea.Cmd 
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
 	positiveFunc := func() tea.Cmd {
-		m.focusOnExtend = msg.focus
-		m.resetSelections()
 		return m.readDir(msg.path)
 	}
 	return alertDialogMsg{
@@ -544,7 +544,7 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	if m.filterState != unfiltered {
 		return nil
 	}
-	cmd := extensionChildSwitchMsg{space, true}.cmd
+	cmd := msgToCmd(extensionChildSwitchMsg{space, true})
 	if m.getSelectionCount() == 0 {
 		return cmd
 	}
@@ -552,7 +552,7 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
 	positiveFunc := func() tea.Cmd {
-		m.resetSelections()
+		m.selectAll(false)
 		return cmd
 	}
 	return alertDialogMsg{
@@ -582,14 +582,13 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 	body := fmt.Sprintf(`Selected “%s%s%s” will be processed as per preferences. To change preferences, press “esc” & “ctrl+p”.`,
 		dirStr, space, fileStr)
 	positiveFunc := func() tea.Cmd {
-		m.resetSelections()
-		cmd := processSelectionsMsg{
+		cmd := msgToCmd(processSelectionsMsg{
 			parentPath: m.dirPath,
 			filenames:  filenames,
 			dirs:       dirs,
 			files:      files,
-		}.cmd
-		return tea.Batch(cmd, extensionChildSwitchMsg{home, false}.cmd)
+		})
+		return tea.Batch(cmd, msgToCmd(extensionChildSwitchMsg{child: home}), msgToCmd(resetExtDirTableSelectionsMsg{}))
 	}
 	return alertDialogMsg{
 		header:         header,
@@ -599,10 +598,6 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
 	}.cmd
-}
-
-func (m extDirNavModel) grantSpaceFocusSwitch() bool {
-	return m.filterState == unfiltered
 }
 
 func (m *extDirNavModel) updateKeymap(disable bool) {
@@ -618,6 +613,7 @@ func customExtDirTableHelp(show bool) *lipTable.Table {
 		rows = [][]string{
 			{"shift+↓/ctrl+↓", "make selection"},
 			{"shift+↑/ctrl+↑", "undo selection"},
+			{"ctrl+s", "send selected files"},
 			{"ctrl+a/z", "select/deselect all"},
 			{"enter", "select/deselect at cursor"},
 			{"esc", "exit filtering"},

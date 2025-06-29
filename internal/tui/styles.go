@@ -91,10 +91,6 @@ var ( // mainModel Styles
 		BorderForeground(highlightColor)
 )
 
-var ( // dirNavModel Styles
-
-)
-
 var ( // processFilesModel Styles
 	zipLogsContainerStyle = lipgloss.NewStyle().
 		Padding(1, 0)
@@ -156,8 +152,14 @@ var ( // extDirNavModel Styles
 						Align(lipgloss.Center)
 )
 
-var ( // remoteSpaceModel Styles
-
+var ( // receiveModel Styles
+	receiveInstanceInputContainerStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(subduedHighlightColor).
+		Foreground(midHighlightColor).
+		Padding(0, 1).
+		Align(lipgloss.Center).
+		Italic(true)
 )
 
 var ( // prepSelModel Styles

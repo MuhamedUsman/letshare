@@ -2,61 +2,66 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
+)
+
+type remoteChild = int
+
+const (
+	recv remoteChild = iota
 )
 
 type remoteSpaceModel struct {
-	titleStyle    lipgloss.Style
+	receive       receiveModel
+	activeChild   remoteChild
 	disableKeymap bool
 }
 
 func initialRemoteSpaceModel() remoteSpaceModel {
 	return remoteSpaceModel{
-		titleStyle: titleStyle.Margin(0, 2),
+		receive:       initialReceiveModel(),
+		disableKeymap: true,
 	}
 }
 
 func (m remoteSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	return false
+	return m.receive.capturesKeyEvent(msg)
 }
 
 func (m remoteSpaceModel) Init() tea.Cmd {
-	return nil
+	return m.receive.Init()
 }
 
 func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
-	switch msg.(type) {
-
-	case tea.WindowSizeMsg:
-		m.updateDimensions()
-
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if m.disableKeymap {
 			return m, nil
 		}
-
-	case spaceFocusSwitchMsg:
-		if currentFocus == remote {
-			m.titleStyle = titleStyle.
-				Background(highlightColor).
-				Foreground(subduedHighlightColor)
-		} else {
-			m.titleStyle = titleStyle.
-				Background(grayColor).
-				Foreground(highlightColor)
+		if m.capturesKeyEvent(msg) {
+			return m, m.handleChildModelUpdate(msg)
 		}
 	}
-
-	return m, nil
+	return m, m.handleChildModelUpdate(msg)
 }
 
 func (m remoteSpaceModel) View() string {
-	s := m.titleStyle.Render("Remote Space")
-	s = runewidth.Truncate(s, runewidth.StringWidth(s), "…")
-	return smallContainerStyle.Width(smallContainerW()).Render(s)
+	var view string
+	switch m.activeChild {
+	case recv:
+		view = m.receive.View()
+	default:
+		return ""
+	}
+	return smallContainerStyle.Render(view)
 }
 
-func (m *remoteSpaceModel) updateDimensions() {
+func (m *remoteSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
+	var cmds [1]tea.Cmd
+	m.receive, cmds[0] = m.receive.Update(msg)
+	return tea.Batch(cmds[:]...)
+}
 
+func (m *remoteSpaceModel) updateKeymap(disable bool) {
+	m.disableKeymap = disable
+	m.receive.updateKeymap(disable || m.activeChild != recv)
 }

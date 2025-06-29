@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -202,9 +203,9 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 			AccessID: k,
 			Name:     stat.Name(),
 			Size:     stat.Size(),
-			Type:     strings.TrimPrefix(filepath.Ext(stat.Name()), "."),
 		}
 		fsInfos = append(fsInfos, fsInfo)
+		sortByNameAsc(fsInfos)
 	}
 	if err := s.writeJSON(w, envelop{"fileIndexes": fsInfos}, http.StatusOK, nil); err != nil {
 		s.serverErrorResponse(w, r, err)
@@ -337,4 +338,10 @@ func shouldLogReq(addr string) bool {
 	reqIp := strings.Split(addr, ":")[0]
 	ip, _ := network.GetOutboundIP()
 	return ip.String() != reqIp
+}
+
+func sortByNameAsc(fi []domain.FileInfo) {
+	slices.SortFunc(fi, func(a, b domain.FileInfo) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 }

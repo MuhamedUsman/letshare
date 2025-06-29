@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/brutella/dnssd"
@@ -51,10 +52,10 @@ type ServiceEntries map[string]ServiceEntry
 // MDNS handles multicast DNS service registration and discovery on local networks.
 // It provides methods to publish services and discover other services on the network.
 type MDNS struct {
-	// Channel to signal updates or changes
-	notifyCh chan struct{}
 	// Mutex to protect access to entries and defaultOwner
 	mu sync.RWMutex
+	// Channel to signal updates or changes
+	notifyCh chan struct{}
 	// Stores discovered mDNS entries
 	entries ServiceEntries
 }
@@ -66,7 +67,10 @@ type MDNS struct {
 // exists across the application. Subsequent calls return the same instance.
 func Get() *MDNS {
 	once.Do(func() {
-		mdns = &MDNS{entries: make(ServiceEntries)}
+		mdns = &MDNS{
+			notifyCh: make(chan struct{}),
+			entries:  make(ServiceEntries),
+		}
 		log.Info.Disable() // Disable logging for dnssd package
 	})
 	return mdns
@@ -104,6 +108,7 @@ func (r *MDNS) Publish(ctx context.Context, instance, host, username string, por
 		Text: map[string]string{UsernameKey: username},
 	}
 	sv, err := dnssd.NewService(cfg)
+	sv.TTL = 10 * time.Second
 	if err != nil {
 		return fmt.Errorf("registering mdns entry: %v", err)
 	}
@@ -118,13 +123,13 @@ func (r *MDNS) Publish(ctx context.Context, instance, host, username string, por
 		return fmt.Errorf("adding service to mdns responder: %v", err)
 	}
 
-	go func() {
+	bgtask.Get().Run(func(_ context.Context) {
 		<-ctx.Done()
 		rp.Remove(hdl)
 		if err := r.triggerRefresh(); err != nil {
 			slog.Error("Error refreshing mdns service", "err", err)
 		}
-	}()
+	})
 
 	if err = rp.Respond(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("responding to mdns requests: %v", err)
@@ -167,7 +172,6 @@ func (r *MDNS) Discover(ctx context.Context) error {
 
 		r.mu.Lock()
 		defer r.mu.Unlock()
-
 		r.entries[e.Name] = ServiceEntry{
 			Owner:    owner,
 			Hostname: e.Host,
@@ -175,31 +179,27 @@ func (r *MDNS) Discover(ctx context.Context) error {
 			Port:     e.Port,
 		}
 
-		if r.notifyCh != nil {
-			close(r.notifyCh)
-		}
-
+		close(r.notifyCh)
+		r.notifyCh = make(chan struct{}) // reset the channel for next notification
 	})
 	rmvFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		delete(r.entries, e.Name)
-		if r.notifyCh != nil {
-			close(r.notifyCh)
-		}
 
+		close(r.notifyCh)
+		r.notifyCh = make(chan struct{}) // reset the channel for next notification
 	})
 	service := fmt.Sprintf("%s.%s", mdnsService, domain)
 	return dnssd.LookupType(ctx, service, addFunc, rmvFunc)
 }
 
-// NotifyOnChange blocks until a change occurs in the discovered mDNS entries.
-func (r *MDNS) NotifyOnChange() {
-	r.notifyCh = make(chan struct{})
-	select {
-	case <-r.notifyCh:
-	}
-	r.notifyCh = nil
+// NotifyOnChange returns a channel that blocks until a change occurs in the discovered mDNS entries.
+func (r *MDNS) NotifyOnChange() <-chan struct{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ch := r.notifyCh
+	return ch
 }
 
 // Entries returns a copy of all currently discovered mDNS services.
@@ -210,7 +210,11 @@ func (r *MDNS) NotifyOnChange() {
 func (r *MDNS) Entries() ServiceEntries {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.entries
+	c := make(ServiceEntries, len(r.entries)) // copy
+	for k, v := range r.entries {
+		c[k] = v
+	}
+	return c
 }
 
 func getOwner(addr string) (string, error) {

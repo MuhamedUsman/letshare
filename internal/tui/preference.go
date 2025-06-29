@@ -129,6 +129,7 @@ func initialPreferenceModel() preferenceModel {
 		preferenceQues: ques,
 		vp:             vp,
 		txtInput:       txtInput,
+		disableKeymap:  true,
 	}
 }
 
@@ -225,7 +226,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		m.renderViewport()
 
 	case spaceFocusSwitchMsg:
-		m.updateTitleStyleAsFocus(currentFocus == extension)
+		m.updateTitleStyleAsFocus()
 
 	case extensionChildSwitchMsg:
 		m.active = msg.child == preference
@@ -319,8 +320,8 @@ func (m *preferenceModel) updateDimensions() {
 	}
 }
 
-func (m *preferenceModel) updateTitleStyleAsFocus(focus bool) {
-	if focus {
+func (m *preferenceModel) updateTitleStyleAsFocus() {
+	if currentFocus == extension {
 		m.titleStyle = titleStyle.
 			Background(highlightColor).
 			Foreground(subduedHighlightColor)
@@ -607,7 +608,7 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 	}
 	nopeFunc := func() tea.Cmd {
 		m.resetToSavedState()
-		return tea.Sequence(rerenderPreferencesCmd, m.inactivePreference())
+		return tea.Sequence(msgToCmd(rerenderPreferencesMsg{}), m.inactivePreference())
 	}
 	return alertDialogMsg{
 		header:         header,
@@ -668,21 +669,21 @@ func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 		},
 		{
 			title: zipFiles,
-			desc:  "Combine all selected files into a single zip archive. When disabled, each directory will be zipped separately.",
+			desc:  "Combine all selected indexes into a single zip archive. When disabled, each directory will be zipped separately.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.ZipFiles,
 		},
 		{
 			title: compression,
-			desc:  "Compress selected files while zipping, no compression will be significantly faster.",
+			desc:  "Compress selected indexes while zipping, no compression will be significantly faster.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.Compression,
 		},
 		{
 			title:  sharedZipName,
-			desc:   "Name of the archive selected files will be zipped into.",
+			desc:   "Name of the archive selected indexes will be zipped into.",
 			prompt: "Name: ",
 			pType:  input,
 			pSec:   share,
@@ -690,7 +691,7 @@ func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 		},
 		{
 			title:  downloadFolder,
-			desc:   "Absolute path to a folder where files will be downloaded.",
+			desc:   "Absolute path to a folder where indexes will be downloaded.",
 			prompt: "Path: ",
 			pType:  input,
 			pSec:   receive,

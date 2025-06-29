@@ -34,7 +34,7 @@ func (h *logHandler) appendLog(l string) {
 
 func (h *logHandler) setLogsLength(l int) {
 	h.portSize = max(0, l)
-	if l <= cap(h.logs) {
+	if l <= len(h.logs) {
 		return
 	}
 	newLogs := make([]string, l)
@@ -43,7 +43,7 @@ func (h *logHandler) setLogsLength(l int) {
 }
 
 // extSendModel is the model to read & view logs when server is running
-// such as who is connected, what files are being downloaded, etc.
+// such as who is connected, what indexes are being downloaded, etc.
 type extSendModel struct {
 	escTimer                timer.Model
 	lh                      *logHandler
@@ -62,7 +62,12 @@ func initialExtSendModel() extSendModel {
 }
 
 func (m extSendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	return !m.disableKeymap && msg.String() == "esc"
+	switch msg.String() {
+	case "esc", "q":
+		return !m.disableKeymap
+	default:
+		return false
+	}
 }
 
 func (m extSendModel) Init() tea.Cmd {
@@ -84,7 +89,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 		m.lh = newLogHandler(msg.logCh)
 		m.activeDownCh = msg.activeDownCh
 		m.updateLogsDimesions()
-		return m, tea.Batch(m.trackLogs(), m.trackActiveDowns(), extensionChildSwitchMsg{child: extSend}.cmd)
+		return m, tea.Batch(m.trackLogs(), m.trackActiveDowns(), msgToCmd(extensionChildSwitchMsg{child: extSend}))
 
 	case serverLogMsg:
 		s := m.parseLog(server.Log(msg))
@@ -96,12 +101,11 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 		return m, m.trackActiveDowns()
 
 	case instanceShutdownMsg:
-		m.escTimer = timer.NewWithInterval(5*time.Second, 100*time.Millisecond)
+		m.escTimer = timer.NewWithInterval(3*time.Second, 100*time.Millisecond)
 		return m, m.escTimer.Init()
 
 	case spaceFocusSwitchMsg:
-		flag := currentFocus == extension
-		m.updateTitleStyleAsFocus(flag)
+		m.updateTitleStyleAsFocus()
 
 	case timer.TickMsg:
 		if msg.ID == m.escTimer.ID() {
@@ -112,7 +116,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 
 	case timer.TimeoutMsg:
 		if msg.ID == m.escTimer.ID() {
-			return m, extensionChildSwitchMsg{home, currentFocus == extension}.cmd
+			return m, msgToCmd(serverLogsTimeoutMsg{}) // extensionSpaceModel handles this & switch back to extDirNav
 		}
 	}
 
@@ -171,8 +175,8 @@ func (m *extSendModel) updateLogsDimesions() {
 	m.lh.setLogsLength(workableH() - subL)
 }
 
-func (m *extSendModel) updateTitleStyleAsFocus(focus bool) {
-	if focus {
+func (m *extSendModel) updateTitleStyleAsFocus() {
+	if currentFocus == extension {
 		m.titleStyle = titleStyle.
 			Background(highlightColor).
 			Foreground(subduedHighlightColor)
