@@ -474,6 +474,10 @@ func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
 	return alertDialogMsg{header: "ZIPPING ERROR", body: b}.cmd
 }
 
+func (m processFilesModel) grantExtSpaceSwitch() bool {
+	return true
+}
+
 func zipDirsAndCollectWithFiles(ctx context.Context, zipper *zipr.Zipr, root string, filenames ...string) ([]string, error) {
 	dirs, files, err := splitToDirsAndFiles(root, filenames...)
 	if err != nil {

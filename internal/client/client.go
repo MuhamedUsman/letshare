@@ -23,6 +23,26 @@ var (
 	client *Client
 )
 
+type progress struct {
+}
+
+type DownloadTracker struct {
+	// w: underlying writer
+	w io.Writer
+	// d: downloaded bytes, t: total bytes
+	d, t uint64
+	// s: speed per sec in bytes
+	s uint32
+}
+
+func NewDownloadTracker(w io.Writer) *DownloadTracker {
+	return &DownloadTracker{w: w}
+}
+
+func (dt *DownloadTracker) Write(p []byte) (n int, err error) {
+	return 0, nil
+}
+
 type Client struct {
 	http http.Client
 	mdns *mdns.MDNS
@@ -85,6 +105,9 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 	return r["fileIndexes"], resp.StatusCode, nil
 }
 
+func (c *Client) downloadFile(accessID uint32, dc DownloadTracker) {
+
+}
 func (c *Client) StopServer(instance string) (int, error) {
 	entries := c.mdns.Entries()
 	entry, ok := entries[instance]

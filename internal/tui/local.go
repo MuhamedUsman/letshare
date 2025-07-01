@@ -64,6 +64,36 @@ func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {
 			currentFocus = local
 			return m, tea.Batch(msgToCmd(spaceFocusSwitchMsg{}), m.handleChildModelUpdate(msg))
 		}
+
+	case spaceFocusSwitchMsg:
+		// once switched with focus, update the view of the extension space
+		// with corresponding local extension child
+		if currentFocus == local {
+			var switchExtChild extChild
+			switch m.activeChild {
+			case dirNav:
+				// ask the child before switching,
+				// they will answer based on their internal state
+				// if false defaults to home
+				if m.dirNavigation.grantExtSpaceSwitch() {
+					switchExtChild = extDirNav
+				}
+			case processFiles:
+				if m.processFiles.grantExtSpaceSwitch() {
+					switchExtChild = home // no extProcessFiles model
+				}
+			case send:
+				if m.send.grantExtSpaceSwitch() {
+					switchExtChild = extSend
+				}
+			default:
+				switchExtChild = home
+			}
+			return m, tea.Batch(
+				msgToCmd(extensionChildSwitchMsg{child: switchExtChild}),
+				m.handleChildModelUpdate(msg),
+			)
+		}
 	}
 
 	return m, m.handleChildModelUpdate(msg)

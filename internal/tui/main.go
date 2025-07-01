@@ -44,11 +44,12 @@ type eventCapturer interface {
 type FinalErrCh chan<- error
 
 type MainModel struct {
-	localSpace     localSpaceModel
-	extensionSpace extensionSpaceModel
-	remoteSpace    remoteSpaceModel
-	confirmation   alertDialogModel
-	finalErrCh     FinalErrCh
+	localSpace         localSpaceModel
+	extensionSpace     extensionSpaceModel
+	remoteSpace        remoteSpaceModel
+	confirmation       alertDialogModel
+	finalErrCh         FinalErrCh
+	isFinalErrChClosed bool // true if finalErrCh is already closed
 }
 
 // InitialMainModel initializes the main model
@@ -141,8 +142,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		if msg.fatal {
-			m.finalErrCh <- msg.err
-			close(m.finalErrCh)
+			if !m.isFinalErrChClosed {
+				m.finalErrCh <- msg.err
+				close(m.finalErrCh)
+				m.isFinalErrChClosed = true
+			}
 			return m, tea.Interrupt
 		}
 		return m, alertDialogMsg{header: msg.errHeader, body: msg.errStr}.cmd

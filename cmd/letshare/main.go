@@ -31,7 +31,7 @@ func main() {
 	slog.SetDefault(slog.New(h))
 
 	bgtask.Get().Run(func(shutdownCtx context.Context) {
-		if err = mdns.Get().Discover(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		if err = mdns.Get().Browse(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			println()
 			slog.Error("Error discovering mDNS services", "err", err)
 			os.Exit(1)

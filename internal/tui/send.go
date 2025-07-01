@@ -101,7 +101,7 @@ func initialSendModel() sendModel {
 
 func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
-	case "left", "right", "h", "l", "enter", "q", "Q", "?":
+	case "left", "right", "h", "l", "enter", " ", "q", "Q", "?":
 		return !m.disableKeymap
 	case "esc":
 		return m.instanceState == idle && !m.disableKeymap
@@ -147,6 +147,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		case "Q", "q":
 			if m.isServing {
 				return m, m.shutdownServer(false)
+			}
+
+		case " ":
+			if m.grantExtSpaceSwitch() {
+				return m, msgToCmd(extensionChildSwitchMsg{extSend, true})
 			}
 
 		case "ctrl+c":
@@ -329,11 +334,11 @@ func (m sendModel) renderInfoText() string {
 			sb.WriteString(baseStyle.Foreground(yellowColor).Render("Instance already serving, requesting shutdown…"))
 		case serving:
 			currentOwner := m.getInstanceOwner(m.getInstance())
-			msg := fmt.Sprintf("Server is currently serving indexes for %q. They're notified of your request, Please either wait or switch instance.", currentOwner)
+			msg := fmt.Sprintf("Server is currently serving files for %q. They're notified of your request, Please either wait or switch instance.", currentOwner)
 			sb.WriteString(baseStyle.Foreground(redColor).Render(msg))
 		case requestAccepted:
 			currentOwner := m.getInstanceOwner(m.getInstance())
-			msg := fmt.Sprintf("Shutting down the server instance serving by %q please wait…", currentOwner)
+			msg := fmt.Sprintf("Shutting down the server instance serving for %q please wait…", currentOwner)
 			sb.WriteString(baseStyle.Foreground(yellowColor).Render(msg))
 		case requestRejected:
 			currentOwner := m.getInstanceOwner(m.getInstance())
@@ -404,7 +409,7 @@ func (m sendModel) renderSelectedInstanceHeader() string {
 func (m *sendModel) confirmEsc() tea.Cmd {
 	selBtn := positive
 	header := "CANCEL SHARING?"
-	body := "This will delete all the processed indexes, and you'll return to file selection."
+	body := "This will delete all the processed files, and you'll return to file selection."
 	positiveFunc := func() tea.Cmd {
 		m.isSelected, m.isServing = false, false
 		return tea.Batch(msgToCmd(localChildSwitchMsg{child: dirNav, focus: true}), m.deleteTempFiles())
@@ -420,7 +425,7 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 }
 
 func (m sendModel) showShutdownReqWhenNotIdleAlert(reqBy string) tea.Cmd {
-	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving indexes. Consider shutting down when idle.", reqBy)
+	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving files. Consider shutting down when idle.", reqBy)
 	return alertDialogMsg{
 		header:        "SHUTDOWN REQUEST",
 		body:          body,
@@ -521,7 +526,8 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 		var err error
 		uname := m.getConfig().Personal.Username
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
-			err = m.mdns.Publish(m.server.StopCtx, instance, instance, uname, 80)
+			hostname := fmt.Sprintf("%s.%s", instance, mdns.Domain)
+			err = m.mdns.Publish(m.server.StopCtx, instance, hostname, uname, 80)
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return errMsg{err: err, fatal: true}
@@ -556,7 +562,7 @@ func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
 			}
 			return alertDialogMsg{
 				header:         "FORCE SHUTDOWN?",
-				body:           "The server is currently serving indexes, do you want to force shutdown, ongoing downloads will abruptly halt.",
+				body:           "The server is currently serving files, do you want to force shutdown, ongoing downloads will abruptly halt.",
 				positiveBtnTxt: "YUP!",
 				negativeBtnTxt: "NOPE",
 				cursor:         positive,
@@ -605,10 +611,14 @@ func (m sendModel) deleteTempFiles() tea.Cmd {
 		for _, p := range m.files {
 			if strings.HasPrefix(p, os.TempDir()) {
 				if err := os.Remove(p); err != nil {
-					slog.Error("deleting temp indexes", "err", err)
+					slog.Error("deleting temp files", "err", err)
 				}
 			}
 		}
 		return nil
 	}
+}
+
+func (m sendModel) grantExtSpaceSwitch() bool {
+	return m.isServing || m.isShutdown
 }

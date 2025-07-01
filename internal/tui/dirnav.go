@@ -89,11 +89,6 @@ type dirNavModel struct {
 	dirList list.Model
 	// current directory path
 	curDirPath string
-	// used to implement double child key action,
-	// extend directory on double child with focus.
-	// if prevSelDir == dirList.SelectedItem()
-	// the key action is valid
-	prevSelDir string
 	// Tracks position when navigating directories
 	prevSelectedStack itemSelectionStack
 	// Toggle for help display and keymap disable
@@ -175,6 +170,11 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 
 		case " ": // child
 			if m.dirList.FilterState() != list.Filtering {
+				gIdx := m.dirList.GlobalIndex()
+				if m.dirList.FilterState() == list.FilterApplied {
+					m.dirList.ResetFilter()
+					m.dirList.Select(gIdx) // reselect the item after filter reset
+				}
 				selDir := m.dirList.SelectedItem().FilterValue()
 				selPath := filepath.Join(m.curDirPath, selDir)
 				return m, msgToCmd(extendDirMsg{selPath, true})
@@ -502,4 +502,8 @@ func (m *dirNavModel) updateKeymap(disable bool) {
 		m.dirList.DisableQuitKeybindings()
 	}
 	m.disableKeymap = disable
+}
+
+func (m dirNavModel) grantExtSpaceSwitch() bool {
+	return true
 }

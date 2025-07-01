@@ -37,3 +37,8 @@ func (s *Server) notIdleResponse(w http.ResponseWriter, r *http.Request) {
 	message := "server is currently not idle (serving files)"
 	s.errorResponse(w, r, http.StatusConflict, message)
 }
+
+func (s *Server) noOSHostnameAllowedResponse(w http.ResponseWriter, r *http.Request) {
+	message := "Wrong door! Use my advertised mDNS service, not my OS hostname. This teapot has standards!"
+	s.errorResponse(w, r, http.StatusTeapot, message)
+}
