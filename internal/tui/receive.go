@@ -21,6 +21,7 @@ type receiveModel struct {
 	instanceInput                              textinput.Model
 	unsavedInput                               string
 	titleStyle                                 lipgloss.Style
+	fileFetchInitiated                         bool
 	disableKeymap, showHelp, instanceAvailable bool
 }
 
@@ -96,10 +97,12 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 
 		case " ":
 			if m.instanceAvailable {
-				return m, tea.Batch(
-					msgToCmd(extensionChildSwitchMsg{child: extReceive, focus: true}),
-					msgToCmd(fetchFileIndexesMsg(*m.trackInstance.Load())),
-				)
+				var fetchCmd tea.Cmd
+				if !m.fileFetchInitiated {
+					fetchCmd = msgToCmd(fetchFileIndexesMsg(*m.trackInstance.Load()))
+				}
+				m.fileFetchInitiated = true
+				return m, tea.Batch(msgToCmd(extensionChildSwitchMsg{child: extReceive, focus: true}), fetchCmd)
 			}
 
 		case "esc":
@@ -119,6 +122,9 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 
 	case instanceAvailabilityMsg:
 		m.instanceAvailable = bool(msg)
+		if !m.instanceAvailable {
+			m.fileFetchInitiated = false
+		}
 		return m, m.trackInstanceAvailabilityOnChange()
 
 	}
@@ -336,6 +342,10 @@ func (m receiveModel) trackInstanceAvailabilityOnChange() tea.Cmd {
 	}
 }
 
+func (m receiveModel) grantExtSpaceSwitch() bool {
+	return m.instanceAvailable && m.fileFetchInitiated
+}
+
 func customReceiveHelp(show bool) *lipTable.Table {
 	baseStyle := lipgloss.NewStyle()
 	var rows [][]string
@@ -343,6 +353,7 @@ func customReceiveHelp(show bool) *lipTable.Table {
 		rows = [][]string{{"?", "help"}}
 	} else {
 		rows = [][]string{
+			{"space", "fetch hosted files"},
 			{"i/I", "focus input field"},
 			{"esc", "blur input field"},
 			{"enter", "confirm input"},

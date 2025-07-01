@@ -9,7 +9,6 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/domain"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/network"
-	"github.com/justinas/alice"
 	"hash/crc32"
 	"log/slog"
 	"net/http"
@@ -99,9 +98,9 @@ func (s *Server) StartServer(filePaths ...string) error {
 	if err != nil {
 		return err
 	}
-	addr := fmt.Sprint(ipAddr.To4(), ":80")
+	addr := fmt.Sprint(ipAddr.String(), ":80")
 	if config.TestFlag {
-		addr = fmt.Sprint(ipAddr.To4(), ":8080")
+		addr = fmt.Sprint(ipAddr.String(), ":8080")
 	}
 
 	server := &http.Server{
@@ -164,11 +163,11 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	panicRecover := alice.New(s.recoverPanic)
-	mux.Handle("GET /{$}", panicRecover.ThenFunc(s.indexFilesHandler))
-	mux.Handle("GET /{id}", panicRecover.ThenFunc(s.serveFileHandler))
-	mux.Handle("GET /owner", panicRecover.ThenFunc(s.ownerNameHandler))
-	mux.Handle("POST /stop", panicRecover.ThenFunc(s.stopHandler))
+	mw := newChain(s.recoverPanic, s.disallowOsHostnames)
+	mux.Handle("GET /{$}", mw.thenFunc(s.indexFilesHandler))
+	mux.Handle("GET /{id}", mw.thenFunc(s.serveFileHandler))
+	mux.Handle("GET /owner", mw.thenFunc(s.ownerNameHandler))
+	mux.Handle("POST /stop", mw.thenFunc(s.stopHandler))
 	return mux
 }
 

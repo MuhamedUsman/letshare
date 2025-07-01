@@ -2,46 +2,32 @@ package mdns
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/MuhamedUsman/letshare/internal/bgtask"
-	"github.com/MuhamedUsman/letshare/internal/config"
 	"github.com/MuhamedUsman/letshare/internal/network"
-	"github.com/brutella/dnssd"
-	"github.com/brutella/dnssd/log"
-	"io"
+	"github.com/betamos/zeroconf"
 	"log/slog"
-	"net"
-	"net/http"
+	"net/netip"
 	"sync"
-	"time"
 )
 
 const (
-	DefaultInstance = "letshare"
 	// UsernameKey used to store the username of the service owner in mDNS TXT records
-	UsernameKey = "username"
-	mdnsService = "_http._tcp"
-	domain      = "local."
+	UsernameKey     = "username"
+	DefaultInstance = "letshare"
+	Domain          = "local"
+	mdnsService     = "_http._tcp"
 )
 
 var (
-	ErrNotFound      = errors.New("mdns instance not found")
-	ErrInstanceOwned = errors.New("mdns instance already owned")
-
+	typ  = zeroconf.NewType(mdnsService)
 	once sync.Once
 	mdns *MDNS
 )
 
-func init() {
-	log.Info.Disable()
-}
-
 // ServiceEntry represents a discovered mDNS service with its network details.
 type ServiceEntry struct {
 	Owner, Hostname, IP string
-	Port                int
+	Port                uint16
 }
 
 // ServiceEntries represents discovered mDNS services where:
@@ -52,12 +38,13 @@ type ServiceEntries map[string]ServiceEntry
 // MDNS handles multicast DNS service registration and discovery on local networks.
 // It provides methods to publish services and discover other services on the network.
 type MDNS struct {
-	// Mutex to protect access to entries and defaultOwner
+	// Mutex to protect access to entries & notifyCh
 	mu sync.RWMutex
-	// Channel to signal updates or changes
-	notifyCh chan struct{}
 	// Stores discovered mDNS entries
 	entries ServiceEntries
+	// channel to broadcast changes to entries
+	notifyCh chan struct{}
+	pub, bro *zeroconf.Client
 }
 
 // Get creates and returns a new MDNS instance.
@@ -68,138 +55,103 @@ type MDNS struct {
 func Get() *MDNS {
 	once.Do(func() {
 		mdns = &MDNS{
-			notifyCh: make(chan struct{}),
 			entries:  make(ServiceEntries),
+			notifyCh: make(chan struct{}),
 		}
-		log.Info.Disable() // Disable logging for dnssd package
 	})
 	return mdns
 }
 
-// Publish advertises a service via multicast DNS on available network interfaces.
-// The service uses the "_http._tcp" service type and "local." domain.
-// The service remains advertised until the provided context is canceled.
+// Publish registers a service instance with mDNS.
 //
-// Parameters:
-//   - ctx: Context that controls the service advertisement lifetime
-//   - instance: The service instance name (visible to other devices)
-//   - host: The Hostname of the device providing the service
-//   - username: username of the instance's Owner
-//   - Port: The Port number on which the service is available
+// Params:
+//   - ctx: Context to control the lifetime of the service registration.
+//   - instance: Unique name for the service instance. (e.g., "letshare")
+//   - hostname: Hostname of the machine hosting the service. (e.g., "my-computer.local")
+//   - username: Username of the service owner, used in TXT records. (e.g., "john_doe")
+//   - port: Port on which the service is running. (e.g., 80)
 //
-// Returns an error if service registration fails.
-func (r *MDNS) Publish(ctx context.Context, instance, host, username string, port int) error {
+// Returns:
+//   - error: An error if the service registration fails, otherwise nil.
+func (r *MDNS) Publish(ctx context.Context, instance, hostname, username string, port uint16) error {
+	s := zeroconf.NewService(typ, instance, port)
+	s.Hostname = hostname
 
-	if config.TestFlag {
-		port = 8080
-	}
+	usr := fmt.Sprintf("%s=%s", UsernameKey, username)
+	s.Text = []string{usr}
 
-	ip, err := network.GetOutboundIP()
+	addr, err := network.GetOutboundIP()
 	if err != nil {
-		return err
+		return fmt.Errorf("getting outbound IP address: %w", err)
 	}
+	s.Addrs = []netip.Addr{addr}
 
-	cfg := dnssd.Config{
-		Name: instance,
-		Type: mdnsService,
-		Host: host,
-		Port: port,
-		IPs:  []net.IP{ip},
-		Text: map[string]string{UsernameKey: username},
-	}
-	sv, err := dnssd.NewService(cfg)
-	sv.TTL = 10 * time.Second
+	r.pub, err = zeroconf.New().Publish(s).Open()
 	if err != nil {
-		return fmt.Errorf("registering mdns entry: %v", err)
+		return fmt.Errorf("publishing mDNS service: %w", err)
 	}
 
-	rp, err := dnssd.NewResponder()
-	if err != nil {
-		return fmt.Errorf("creating mdns responder: %v", err)
-	}
-
-	hdl, err := rp.Add(sv)
-	if err != nil {
-		return fmt.Errorf("adding service to mdns responder: %v", err)
-	}
-
-	bgtask.Get().Run(func(_ context.Context) {
-		<-ctx.Done()
-		rp.Remove(hdl)
-		if err := r.triggerRefresh(); err != nil {
-			slog.Error("Error refreshing mdns service", "err", err)
+	defer func() {
+		if err = r.pub.Close(); err != nil {
+			slog.Error("closing mDNS publisher", "error", err)
 		}
-	})
+	}()
 
-	if err = rp.Respond(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		return fmt.Errorf("responding to mdns requests: %v", err)
-	}
-	return nil
+	<-ctx.Done()
+	return err
 }
 
-// triggerRefresh triggers a refresh of the mDNS cache
-// it is to ensure, other discovery clients run their dnssd.RmvFunc instantly
-func (r *MDNS) triggerRefresh() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	instance := fmt.Sprintf("%s.%s%s", DefaultInstance, mdnsService, domain)
-	if _, err := dnssd.LookupInstance(ctx, instance); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("triggering refresh %q: %v", instance, err)
-	}
-	return nil
-}
+// Browse discovers mDNS services on the local network.
+// It listens for changes in the mDNS service entries and updates the internal state.
+// The function blocks until the provided context is done.
+// It uses a callback function to handle service events (added, updated, removed).
+func (r *MDNS) Browse(ctx context.Context) error {
+	bf := func(e zeroconf.Event) {
+		r.mu.Lock()
+		switch e.Op {
+		case zeroconf.OpAdded, zeroconf.OpUpdated:
+			se := ServiceEntry{
+				Owner:    extractOwner(e.Text),
+				Hostname: e.Hostname,
+				IP:       e.Addrs[0].String(),
+				Port:     e.Port,
+			}
+			r.entries[e.Name] = se
+			close(r.notifyCh)                // Notify the change
+			r.notifyCh = make(chan struct{}) // Reset the channel for next notification
 
-// Discover continuously discovers mDNS services on the local network.
-// Discovered services are automatically stored in the internal entries map
-// and can be retrieved using the Entries() method.
-//
-// Parameters:
-//   - ctx: Context that controls the discovery process lifetime
-//
-// Returns an error if the discovery process fails to start.
-func (r *MDNS) Discover(ctx context.Context) error {
-	addFunc := dnssd.AddFunc(func(e dnssd.BrowseEntry) {
-		owner := e.Text[UsernameKey]
-
-		if owner == "" { // get the username by an http call
-			addr := fmt.Sprintf("%s:%d", e.IPs[0].To4().String(), e.Port)
-			var err error
-			owner, err = getOwner(addr)
-			if err != nil {
-				slog.Error("error getting owner name", "err", err)
+		case zeroconf.OpRemoved:
+			if _, ok := r.entries[e.Name]; ok {
+				delete(r.entries, e.Name)
+				close(r.notifyCh)
+				r.notifyCh = make(chan struct{})
 			}
 		}
+		r.mu.Unlock()
+	}
 
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.entries[e.Name] = ServiceEntry{
-			Owner:    owner,
-			Hostname: e.Host,
-			IP:       e.IPs[0].To4().String(), // Assuming the first IP is the primary one
-			Port:     e.Port,
+	var err error
+	r.bro, err = zeroconf.New().Browse(bf, typ).Open()
+	if err != nil {
+		return fmt.Errorf("browsing mDNS services: %w", err)
+	}
+
+	defer func() {
+		if err = r.bro.Close(); err != nil {
+			slog.Error("closing mDNS browser", "error", err)
 		}
+	}()
 
-		close(r.notifyCh)
-		r.notifyCh = make(chan struct{}) // reset the channel for next notification
-	})
-	rmvFunc := dnssd.RmvFunc(func(e dnssd.BrowseEntry) {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		delete(r.entries, e.Name)
-
-		close(r.notifyCh)
-		r.notifyCh = make(chan struct{}) // reset the channel for next notification
-	})
-	service := fmt.Sprintf("%s.%s", mdnsService, domain)
-	return dnssd.LookupType(ctx, service, addFunc, rmvFunc)
+	<-ctx.Done()
+	return err
 }
 
 // NotifyOnChange returns a channel that blocks until a change occurs in the discovered mDNS entries.
+// the channel is closed when a change happens, and it is reset for the next notification.
 func (r *MDNS) NotifyOnChange() <-chan struct{} {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	ch := r.notifyCh
-	return ch
+	return r.notifyCh
 }
 
 // Entries returns a copy of all currently discovered mDNS services.
@@ -217,36 +169,24 @@ func (r *MDNS) Entries() ServiceEntries {
 	return c
 }
 
-func getOwner(addr string) (string, error) {
-	c := http.Client{Timeout: 2 * time.Second}
-	addr = fmt.Sprintf("http://%s/owner", addr)
+func (r *MDNS) ReloadPublisher() {
+	r.pub.Reload()
+}
 
-	req, err := http.NewRequest("GET", addr, nil)
-	if err != nil {
-		return "", fmt.Errorf("creating request: %v", err)
-	}
+func (r *MDNS) ReloadBrowser() {
+	r.bro.Reload()
+}
 
-	cfg, _ := config.Get()
-	req.Header.Set("X-Requested-By", cfg.Personal.Username)
-
-	resp, err := c.Do(req)
-	if err != nil {
-		return "", err
+func extractOwner(s []string) string {
+	kl := len(UsernameKey)
+	for _, kv := range s {
+		if kv == "" {
+			continue
+		}
+		kvl := len(kv)
+		if kvl > kl && kv[:kl] == UsernameKey && kv[kl] == '=' {
+			return kv[kl+1:]
+		}
 	}
-	defer resp.Body.Close()
-
-	// Check status code
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
-	}
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("reading response: %v", err)
-	}
-
-	var r map[string]string
-	if err = json.Unmarshal(b, &r); err != nil {
-		return "", fmt.Errorf("parsing response: %v", err)
-	}
-	return r["username"], nil
+	return ""
 }

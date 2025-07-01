@@ -78,6 +78,8 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "esc":
+			return m, msgToCmd(extensionChildSwitchMsg{child: home, focus: true})
 		case "?":
 			m.showHelp = !m.showHelp
 		}
@@ -101,7 +103,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 		return m, m.trackActiveDowns()
 
 	case instanceShutdownMsg:
-		m.escTimer = timer.NewWithInterval(3*time.Second, 100*time.Millisecond)
+		m.escTimer = timer.NewWithInterval(2*time.Second, 100*time.Millisecond)
 		return m, m.escTimer.Init()
 
 	case spaceFocusSwitchMsg:

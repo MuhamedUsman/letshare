@@ -40,7 +40,31 @@ func (m remoteSpaceModel) Update(msg tea.Msg) (remoteSpaceModel, tea.Cmd) {
 		if m.capturesKeyEvent(msg) {
 			return m, m.handleChildModelUpdate(msg)
 		}
+
+	case remoteChildSwitchMsg:
+		m.activeChild = msg.child
+		if msg.focus {
+			currentFocus = remote
+			return m, tea.Batch(msgToCmd(spaceFocusSwitchMsg{}), m.handleChildModelUpdate(msg))
+		}
+
+	case spaceFocusSwitchMsg:
+		// once switched with focus, update the view of the extension space
+		// with corresponding local extension child
+		if currentFocus == remote {
+			var switchExtChild extChild
+			switch m.activeChild {
+			case recv:
+				if m.receive.grantExtSpaceSwitch() {
+					switchExtChild = extReceive
+				}
+			default:
+				switchExtChild = home
+			}
+			return m, tea.Batch(msgToCmd(extensionChildSwitchMsg{child: switchExtChild}), m.handleChildModelUpdate(msg))
+		}
 	}
+
 	return m, m.handleChildModelUpdate(msg)
 }
 

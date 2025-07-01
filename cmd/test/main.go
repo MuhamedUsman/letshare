@@ -12,5 +12,7 @@ func init() {
 }
 
 func main() {
-
+	x := 1
+	defer println(x)
+	x = 2
 }
