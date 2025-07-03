@@ -530,11 +530,12 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Receive.DownloadFolder
 		}
 	}
-
 }
 
 func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
+	m.handleViewportScroll(up)
+	m.renderViewport()
 	m.active = false
 	return preferenceInactiveCmd
 }
@@ -669,21 +670,21 @@ func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 		},
 		{
 			title: zipFiles,
-			desc:  "Combine all selected indexes into a single zip archive. When disabled, each directory will be zipped separately.",
+			desc:  "Combine all selected files into a single zip archive. When disabled, each directory will be zipped separately.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.ZipFiles,
 		},
 		{
 			title: compression,
-			desc:  "Compress selected indexes while zipping, no compression will be significantly faster.",
+			desc:  "Compress selected files while zipping, no compression will be significantly faster.",
 			pType: option,
 			pSec:  share,
 			check: cfg.Share.Compression,
 		},
 		{
 			title:  sharedZipName,
-			desc:   "Name of the archive selected indexes will be zipped into.",
+			desc:   "Name of the archive selected files will be zipped into.",
 			prompt: "Name: ",
 			pType:  input,
 			pSec:   share,
@@ -691,7 +692,7 @@ func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 		},
 		{
 			title:  downloadFolder,
-			desc:   "Absolute path to a folder where indexes will be downloaded.",
+			desc:   "Absolute path to a folder where files will be downloaded.",
 			prompt: "Path: ",
 			pType:  input,
 			pSec:   receive,

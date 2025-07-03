@@ -288,7 +288,7 @@ func (m processFilesModel) renderStatusBar() string {
 	processedPerSec := humanize.Bytes(m.zipTracker.processedPerSec)
 	s := fmt.Sprintf("Processsing at %s/s", processedPerSec)
 	if m.zipTracker.state == canceling {
-		s = "Canceling, may take a while!"
+		s = "Canceling, please wait…"
 	}
 	if m.zipTracker.state == canceled {
 		s = "Processing Canceled!"
@@ -378,7 +378,7 @@ func (m *processFilesModel) processFiles(
 	}
 
 	return func() tea.Msg {
-		zipper := zipr.New(progCh, logCh, algo)
+		zipper := zipr.New(m.zipTracker.ctx, progCh, logCh, algo)
 		defer func() { _ = zipper.Close() }()
 		var err error
 
@@ -386,7 +386,6 @@ func (m *processFilesModel) processFiles(
 			if cfg.Share.ZipFiles {
 				var archive string
 				archive, err = zipper.CreateArchive(
-					m.zipTracker.ctx, // will be canceled on shutdown
 					os.TempDir(),
 					cfg.Share.SharedZipName,
 					msg.parentPath,
@@ -395,7 +394,6 @@ func (m *processFilesModel) processFiles(
 				archives = []string{archive}
 			} else {
 				archives, err = zipDirsAndCollectWithFiles(
-					m.zipTracker.ctx,
 					zipper,
 					msg.parentPath,
 					msg.filenames...,
@@ -408,7 +406,7 @@ func (m *processFilesModel) processFiles(
 			<-m.zipTracker.ctx.Done()
 			return zippingCanceledMsg{}
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			return zippingErrMsg(err)
 		}
 		return zippingDoneMsg(archives)
@@ -436,7 +434,7 @@ func (m processFilesModel) trackLogs() tea.Cmd {
 func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
 	selBtn := positive
 	header := "STOP ZIPPING?"
-	body := "Do you want to stop zipping the indexes, progress will be lost."
+	body := "Do you want to stop zipping the files, progress will be lost."
 	positiveFunc := func() tea.Cmd {
 		m.zipTracker.state = canceling
 		m.zipTracker.cancel()
@@ -469,7 +467,7 @@ func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
 			b = fmt.Sprintf("Unexpected error occurred while accessing %q.", filepath.ToSlash(pe.Path))
 		}
 	} else {
-		b = "Unexpected error occurred while zipping indexes."
+		b = "Unexpected error occurred while zipping files."
 	}
 	return alertDialogMsg{header: "ZIPPING ERROR", body: b}.cmd
 }
@@ -478,12 +476,12 @@ func (m processFilesModel) grantExtSpaceSwitch() bool {
 	return true
 }
 
-func zipDirsAndCollectWithFiles(ctx context.Context, zipper *zipr.Zipr, root string, filenames ...string) ([]string, error) {
+func zipDirsAndCollectWithFiles(zipper *zipr.Zipr, root string, filenames ...string) ([]string, error) {
 	dirs, files, err := splitToDirsAndFiles(root, filenames...)
 	if err != nil {
 		return nil, err
 	}
-	archives, err := zipper.CreateArchives(ctx, os.TempDir(), root, dirs...)
+	archives, err := zipper.CreateArchives(os.TempDir(), root, dirs...)
 	if err != nil {
 		return nil, err
 	}

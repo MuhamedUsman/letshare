@@ -500,12 +500,18 @@ func (m extReceiveModel) fetchFileIndexes() tea.Cmd {
 
 		indexes := make([]fileIndex, len(fInfos))
 		for i, f := range fInfos {
-			ext := strings.TrimPrefix(filepath.Ext(f.Name), ".")
+			ext := filepath.Ext(f.Name)
+			if ext == f.Name { // .gitignore or similar files
+				ext = ""
+			}
+			name := strings.TrimSuffix(f.Name, ext) // remove the extension from the name
 			if ext == "" {
 				ext = "---"
+			} else {
+				ext = strings.TrimPrefix(ext, ".") // remove the leading dot
 			}
 			indexes[i] = fileIndex{
-				name:     f.Name,
+				name:     name,
 				ext:      ext,
 				accessID: f.AccessID,
 				size:     humanize.Bytes(uint64(f.Size)),

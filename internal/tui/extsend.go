@@ -77,6 +77,9 @@ func (m extSendModel) Init() tea.Cmd {
 func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.disableKeymap {
+			return m, nil
+		}
 		switch msg.String() {
 		case "esc":
 			return m, msgToCmd(extensionChildSwitchMsg{child: home, focus: true})

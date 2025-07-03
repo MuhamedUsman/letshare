@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lmittmann/tint"
 	"log/slog"
-	_ "net/http/pprof"
 	"os"
 	"time"
 )
@@ -38,7 +37,7 @@ func main() {
 		}
 	})
 
-	finalErrCh := make(chan error, 1)
+	finalErrCh := make(chan error, 1) // writer wil close
 	_, err = tea.NewProgram(
 		tui.InitialMainModel(finalErrCh),
 		tea.WithAltScreen(),
