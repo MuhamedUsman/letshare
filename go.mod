@@ -5,14 +5,11 @@ go 1.24.4
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/betamos/zeroconf v0.1.8-0.20250208023331-d559d61612b7
-	github.com/brutella/dnssd v1.2.14
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.5
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.9.3
 	github.com/dustin/go-humanize v1.0.1
-	github.com/grandcat/zeroconf v1.0.0
-	github.com/justinas/alice v1.2.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mattn/go-runewidth v0.0.16
@@ -25,7 +22,6 @@ require (
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/charmbracelet/colorprofile v0.3.1 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
@@ -38,8 +34,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/vishvananda/netlink v1.3.1 // indirect
-	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/mod v0.25.0 // indirect

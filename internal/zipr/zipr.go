@@ -27,6 +27,7 @@ const (
 // goroutines. It maintains a cumulative count of bytes processed across all
 // read operations and periodically reports progress through the provided channel.
 type Zipr struct {
+	ctx        context.Context
 	progressCh chan<- uint64
 	logCh      chan<- string
 	read       atomic.Uint64
@@ -56,89 +57,14 @@ type Zipr struct {
 //	logCh := make(chan string) // Buffered/Unbuffered as needed
 //	zipper := zipr.Get(progressCh, logCh, zipr.Deflate) // Using DEFLATE compression
 //	noReportZipper := zipr.Get(nil, nil, zipr.Store) // No progress reporting
-func New(progressCh chan<- uint64, logCh chan<- string, algo compressionAlgo) *Zipr {
+func New(ctx context.Context, progressCh chan<- uint64, logCh chan<- string, algo compressionAlgo) *Zipr {
 	return &Zipr{
+		ctx:        ctx,
 		progressCh: progressCh,
 		logCh:      logCh,
 		lastRead:   time.Now(),
 		algo:       algo,
 	}
-}
-
-// CreateArchive creates a zip archive of the specified files/directories.
-//
-// If no filenames are provided, it creates a zip archive of the entire root directory.
-// The first write to progressChan will be the total size of the archive.
-//
-// Parameters:
-//   - ctx: Context for cancelling the operation - if cancelled, any partially created archive will be deleted
-//   - path: The directory where the zip archive will be created
-//   - archiveName: The name of the zip archive to create (should include .zip extension)
-//   - root: The path to the root directory to zip
-//   - files: Optional list of file or directory names within the root directory to zip
-//
-// Returns:
-//   - The full path to the created zip archive
-//   - An error if the operation fails
-//
-// Example:
-//
-//	// Zip an entire directory
-//	path, err := zipper.CreateArchive(context.Background(), "/tmp", "backup.zip", "/home/user/documents")
-//
-//	// Zip specific files within a directory
-//	path, err := zipper.CreateArchive(context.Background() ,"/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
-func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string, files ...string) (string, error) {
-	archivePath := filepath.Join(path, archiveName)
-	archive, err := os.Create(archivePath)
-	if err != nil {
-		return "", fmt.Errorf("creating empty zip archive: %w", err)
-	}
-	defer func() { _ = archive.Close() }()
-	size, err := calculateSize(root, files...)
-	if err != nil {
-		return "", fmt.Errorf("retrieving filesize: %w", err)
-	}
-
-	_ = trySend(z.progressCh, uint64(size)) // report total size
-
-	zw := zip.NewWriter(archive)
-	defer func() { _ = zw.Close() }()
-
-	// zip the whole dir if no files are specified
-	if len(files) == 0 {
-		if err = z.writeDir(ctx, zw, root, root); err != nil {
-			_ = archive.Close()
-			_ = os.Remove(archivePath) // delete partial written archive, ignore errors
-			return "", fmt.Errorf("zipping whole dir: %w", err)
-		}
-	} else { // zip the specified files
-		for _, file := range files {
-			filePath := filepath.Join(root, file)
-			var stat fs.FileInfo
-			if stat, err = os.Stat(filePath); err != nil {
-				return "", fmt.Errorf("statting file: %w", err)
-			}
-			if stat.IsDir() {
-				err = z.writeDir(ctx, zw, root, filePath)
-			} else {
-				// once a file write is happening, we cannot cancel
-				// so check for ctx.Done() before writing
-				select {
-				case <-ctx.Done():
-					err = ctx.Err()
-				default:
-					err = z.writeFile(zw, root, filePath)
-				}
-			}
-			if err != nil {
-				_ = archive.Close()
-				_ = os.Remove(archivePath) // delete partial written archive, ignore errors
-				return "", fmt.Errorf("zipping %q: %w", filePath, err)
-			}
-		}
-	}
-	return archivePath, nil
 }
 
 // CreateArchives concurrently creates zip archives for multiple directories.
@@ -166,7 +92,7 @@ func (z *Zipr) CreateArchive(ctx context.Context, path, archiveName, root string
 //	for _, path := range paths {
 //	    fmt.Println("Created archive:", path)
 //	}
-func (z *Zipr) CreateArchives(ctx context.Context, path, root string, dirs ...string) ([]string, error) {
+func (z *Zipr) CreateArchives(path, root string, dirs ...string) ([]string, error) {
 	if err := checkValidDirs(root, dirs...); err != nil {
 		return nil, err
 	}
@@ -178,7 +104,7 @@ func (z *Zipr) CreateArchives(ctx context.Context, path, root string, dirs ...st
 	_ = trySend(z.progressCh, uint64(size)) // report total size
 
 	zippedDirs := make([]string, len(dirs))
-	wp := bgtask.NewWorkerPool(ctx)
+	wp := bgtask.NewWorkerPool(z.ctx)
 
 main:
 	for i, dir := range dirs {
@@ -193,7 +119,7 @@ main:
 				dirToZip := filepath.Join(root, dir)
 				archiveName := dir + ".zip"
 				var archivePath string
-				if archivePath, err = z.CreateArchive(ctx, path, archiveName, dirToZip); err != nil {
+				if archivePath, err = z.CreateArchive(path, archiveName, dirToZip); err != nil {
 					return err
 				}
 				zippedDirs[i] = archivePath
@@ -207,6 +133,75 @@ main:
 	}
 
 	return zippedDirs, nil
+}
+
+// CreateArchive creates a zip archive of the specified files/directories.
+//
+// If no filenames are provided, it creates a zip archive of the entire root directory.
+// The first write to progressChan will be the total size of the archive.
+//
+// Parameters:
+//   - ctx: Context for cancelling the operation - if cancelled, any partially created archive will be deleted
+//   - path: The directory where the zip archive will be created
+//   - archiveName: The name of the zip archive to create (should include .zip extension)
+//   - root: The path to the root directory to zip
+//   - files: Optional list of file or directory names within the root directory to zip
+//
+// Returns:
+//   - The full path to the created zip archive
+//   - An error if the operation fails
+//
+// Example:
+//
+//	// Zip an entire directory
+//	path, err := zipper.CreateArchive(context.Background(), "/tmp", "backup.zip", "/home/user/documents")
+//
+//	// Zip specific files within a directory
+//	path, err := zipper.CreateArchive(context.Background() ,"/tmp", "partial.zip", "/home/user/documents", "file1.txt", "folder1")
+func (z *Zipr) CreateArchive(path, archiveName, root string, files ...string) (string, error) {
+	archivePath := filepath.Join(path, archiveName)
+	archive, err := os.Create(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("creating empty zip archive: %w", err)
+	}
+	defer func() { _ = archive.Close() }()
+	size, err := calculateSize(root, files...)
+	if err != nil {
+		return "", fmt.Errorf("retrieving filesize: %w", err)
+	}
+
+	_ = trySend(z.progressCh, uint64(size)) // report total size
+
+	zw := zip.NewWriter(archive)
+	defer func() { _ = zw.Close() }()
+
+	// zip the whole dir if no files are specified
+	if len(files) == 0 {
+		if err = z.writeDir(zw, root, root); err != nil {
+			_ = archive.Close()
+			_ = os.Remove(archivePath) // delete partial written archive, ignore errors
+			return "", fmt.Errorf("zipping whole dir: %w", err)
+		}
+	} else { // zip the specified files
+		for _, file := range files {
+			filePath := filepath.Join(root, file)
+			var stat fs.FileInfo
+			if stat, err = os.Stat(filePath); err != nil {
+				return "", fmt.Errorf("statting file: %w", err)
+			}
+			if stat.IsDir() {
+				err = z.writeDir(zw, root, filePath)
+			} else {
+				err = z.writeFile(zw, root, filePath)
+			}
+			if err != nil {
+				_ = archive.Close()
+				_ = os.Remove(archivePath) // delete partial written archive, ignore errors
+				return "", fmt.Errorf("zipping %q: %w", filePath, err)
+			}
+		}
+	}
+	return archivePath, nil
 }
 
 // Close sends a final progress update and closes the progress channel,
@@ -245,17 +240,12 @@ func (z *Zipr) newReader(base io.Reader) io.Reader {
 //
 // Returns:
 //   - An error if the operation fails
-func (z *Zipr) writeDir(ctx context.Context, w *zip.Writer, root, dirPath string) error {
+func (z *Zipr) writeDir(w *zip.Writer, root, dirPath string) error {
 	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err != nil || d.IsDir() {
-				return err
-			}
-			return z.writeFile(w, root, path)
+		if err != nil || d.IsDir() {
+			return err
 		}
+		return z.writeFile(w, root, path)
 	})
 }
 
@@ -306,7 +296,7 @@ func (z *Zipr) writeFile(w *zip.Writer, basePath, filePath string) error {
 	}
 
 	r := z.newReader(f)
-	buf := make([]byte, 1024*1024) // 1MB buffer
+	buf := make([]byte, 1<<20) // 1MB buffer
 	if _, err = io.CopyBuffer(ioW, r, buf); err != nil {
 		return fmt.Errorf("copying %q to archive: %w", f.Name(), err)
 	}
@@ -332,6 +322,9 @@ type progressReader struct {
 // The progress updates are sent in a non-blocking way to prevent
 // deadlocks if the channel receiver is not ready.
 func (pr *progressReader) Read(p []byte) (n int, err error) {
+	if pr.ctx.Err() != nil { // used to cancel the zipping
+		return 0, pr.ctx.Err() // return early if context is cancelled
+	}
 	n, err = pr.r.Read(p)
 	pr.read.Add(uint64(n))
 	pr.lrMu.RLock()

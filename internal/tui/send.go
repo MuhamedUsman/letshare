@@ -48,7 +48,7 @@ const (
 	idle requiredInstanceState = iota
 	// we're requesting the instance
 	requesting
-	// the instance is serving indexes and is not idle
+	// the instance is serving files and is not idle
 	// the owner will be notified for our request
 	serving
 	// the instance became available for us to use

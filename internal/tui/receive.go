@@ -113,7 +113,9 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 			}
 
 		case "?":
-			m.showHelp = !m.showHelp
+			if !m.instanceInput.Focused() {
+				m.showHelp = !m.showHelp
+			}
 
 		}
 

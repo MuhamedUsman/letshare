@@ -59,13 +59,13 @@ func filter(term string, targets []string) []int {
 }
 
 type extDirNavModel struct {
-	extDirTable                                           table.Model
-	filter                                                textinput.Model
-	titleStyle                                            lipgloss.Style
-	filterState                                           filterState
-	dirContents                                           dirContents
-	dirPath                                               string
-	filterChanged, focusOnExtend, showHelp, disableKeymap bool
+	extDirTable                                                        table.Model
+	filter                                                             textinput.Model
+	titleStyle                                                         lipgloss.Style
+	filterState                                                        filterState
+	dirContents                                                        dirContents
+	dirPath                                                            string
+	allSelected, filterChanged, focusOnExtend, showHelp, disableKeymap bool
 }
 
 func initialExtDirNavModel() extDirNavModel {
@@ -111,9 +111,9 @@ func (m extDirNavModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	case "enter", "ctrl+s":
 		return m.filterState == filtering ||
 			(m.isValidTableShortcut() && m.filterState != filtering && m.getSelectionCount() > 0)
-	case "up", "down", "?", "ctrl+a", "ctrl+z":
+	case "up", "down", "?", "ctrl+a":
 		return true
-	case "/", "shift+up", "ctrl+up", "shift+down", "ctrl+down":
+	case "/", "shift+up", "shift+down":
 		return m.isValidTableShortcut()
 	case "esc":
 		return m.filterState != unfiltered || m.getSelectionCount() > 0
@@ -161,23 +161,21 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 				return m, tea.Batch(m.handleInfoTableUpdate(msg))
 			}
 
-		case "shift+down", "ctrl+down": // select a row and move down
+		case "shift+down": // select a row and move down
 			if m.isValidTableShortcut() {
 				m.selectSingle(true)
 				m.extDirTable.MoveDown(1)
 			}
 
-		case "shift+up", "ctrl+up": // undo selection & move up
+		case "shift+up": // undo selection & move up
 			if m.isValidTableShortcut() {
 				m.selectSingle(false)
 				m.extDirTable.MoveUp(1)
 			}
 
 		case "ctrl+a":
-			m.selectAll(true)
-
-		case "ctrl+z":
-			m.selectAll(false)
+			m.allSelected = !m.allSelected
+			m.selectAll(m.allSelected)
 
 		case "ctrl+s":
 			if m.filterState != filtering && m.getSelectionCount() > 0 {
@@ -229,7 +227,8 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 		return m, msgToCmd(extensionChildSwitchMsg{extDirNav, m.focusOnExtend})
 
 	case resetExtDirTableSelectionsMsg:
-		m.selectAll(false)
+		m.allSelected = false
+		m.selectAll(m.allSelected)
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
@@ -552,7 +551,8 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
 	positiveFunc := func() tea.Cmd {
-		m.selectAll(false)
+		m.allSelected = false
+		m.selectAll(m.allSelected)
 		return cmd
 	}
 	return alertDialogMsg{
@@ -611,16 +611,11 @@ func customExtDirTableHelp(show bool) *lipTable.Table {
 		rows = [][]string{{"?", "help"}}
 	} else {
 		rows = [][]string{
-			{"shift+↓/ctrl+↓", "make selection"},
-			{"shift+↑/ctrl+↑", "undo selection"},
-			{"ctrl+s", "send selected files"},
-			{"ctrl+a/z", "select/deselect all"},
 			{"enter", "select/deselect at cursor"},
+			{"shift+↓/↑", "make/undo selection"},
+			{"ctrl+a", "select/deselect all"},
+			{"ctrl+s", "send selected files"},
 			{"esc", "exit filtering"},
-			{"b/pgup", "page up"},
-			{"f/space", "page down"},
-			{"g/home", "go to start"},
-			{"G/end", "go to end"},
 			{"/", "filter"},
 			{"?", "hide help"},
 		}
