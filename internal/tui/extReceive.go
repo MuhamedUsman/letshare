@@ -36,7 +36,7 @@ type extReceiveModel struct {
 	filterState                            filterState
 	files                                  fileIndexes
 	focusOnExtend, showHelp, disableKeymap bool
-	isFetching, filterChanged              bool
+	allSelected, isFetching, filterChanged bool
 }
 
 func initialExtReceiveModel() extReceiveModel {
@@ -62,9 +62,9 @@ func (m extReceiveModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	case "enter", "ctrl+s":
 		return m.filterState == filtering ||
 			(m.isValidTableShortcut() && m.filterState != filtering && m.getSelectionCount() > 0)
-	case "up", "down", "?", "ctrl+a", "ctrl+z":
+	case "up", "down", "?", "ctrl+a":
 		return true
-	case "/", "shift+up", "ctrl+up", "shift+down", "ctrl+down":
+	case "/", "shift+up", "shift+down":
 		return m.isValidTableShortcut()
 	case "esc":
 		return m.filterState != unfiltered || m.getSelectionCount() > 0
@@ -111,23 +111,21 @@ func (m extReceiveModel) Update(msg tea.Msg) (extReceiveModel, tea.Cmd) {
 				return m, tea.Batch(m.handleInfoTableUpdate(msg))
 			}
 
-		case "shift+down", "ctrl+down": // select a row and move down
+		case "shift+down": // select a row and move down
 			if m.isValidTableShortcut() {
 				m.selectSingle(true)
 				m.extFileIndexTable.MoveDown(1)
 			}
 
-		case "shift+up", "ctrl+up": // undo selection & move up
+		case "shift+up": // undo selection & move up
 			if m.isValidTableShortcut() {
 				m.selectSingle(false)
 				m.extFileIndexTable.MoveUp(1)
 			}
 
 		case "ctrl+a":
-			m.selectAll(true)
-
-		case "ctrl+z":
-			m.selectAll(false)
+			m.allSelected = !m.allSelected
+			m.selectAll(m.allSelected)
 
 		case "ctrl+s":
 			if m.filterState != filtering && m.getSelectionCount() > 0 {
@@ -157,8 +155,9 @@ func (m extReceiveModel) Update(msg tea.Msg) (extReceiveModel, tea.Cmd) {
 			}
 		}
 
-	case resetExtDirTableSelectionsMsg:
-		m.selectAll(false)
+	case resetExtFileIndexTableSelectionsMsg:
+		m.allSelected = false
+		m.selectAll(m.allSelected)
 
 	case spaceFocusSwitchMsg:
 		if currentFocus == extension {
@@ -191,7 +190,7 @@ func (m extReceiveModel) Update(msg tea.Msg) (extReceiveModel, tea.Cmd) {
 }
 
 func (m extReceiveModel) View() string {
-	help := customExtDirTableHelp(m.showHelp)
+	help := customExtReceiveTableHelp(m.showHelp)
 	help.Width(m.extFileIndexTable.Width() - 2)
 	title := "Extended Instance: " + m.instance
 	tail := "…"
@@ -398,17 +397,18 @@ func (m *extReceiveModel) confirmDiacardSel(space extChild) tea.Cmd {
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
 	positiveFunc := func() tea.Cmd {
-		m.selectAll(false)
+		m.allSelected = false
+		m.selectAll(m.allSelected)
 		return cmd
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m *extReceiveModel) confirmDownload() tea.Cmd {
@@ -422,14 +422,14 @@ func (m *extReceiveModel) confirmDownload() tea.Cmd {
 		})
 		return tea.Batch(msgToCmd(resetExtFileIndexTableSelectionsMsg{}), cmd)
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m *extReceiveModel) updateKeymap(disable bool) {

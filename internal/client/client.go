@@ -21,9 +21,7 @@ import (
 	"time"
 )
 
-const (
-	incompleteDownloadKey = ".incd"
-)
+const incompleteDownloadKey = ".incd"
 
 var (
 	once   sync.Once
@@ -50,13 +48,12 @@ type DownloadTracker struct {
 	cancel context.CancelFunc
 }
 
-func NewDownloadTracker(f string, ch chan Progress) (*DownloadTracker, error) {
+func NewDownloadTracker(ctx context.Context, f string, ch chan Progress) (*DownloadTracker, error) {
 	file, size, err := prepareFileForDownload(f)
 	if err != nil {
 		return nil, fmt.Errorf("preparing file %w", err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	dt := &DownloadTracker{
 		f:      file,
 		pch:    ch,
@@ -193,7 +190,7 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 	return r["fileIndexes"], resp.StatusCode, nil
 }
 
-func (c *Client) DownloadFile(instance string, accessID uint32, dst *DownloadTracker) (int, error) {
+func (c *Client) DownloadFile(dst *DownloadTracker, instance string, accessID uint32) (int, error) {
 	path := fmt.Sprintf("/%d", accessID)
 	var status int
 	b := make([]byte, 1<<20) // 1MB buffer size
@@ -205,19 +202,13 @@ func (c *Client) DownloadFile(instance string, accessID uint32, dst *DownloadTra
 	dst.t.Store(size) // set total size of the file
 
 	for i := 1; i <= 5; i++ {
-		var req *http.Request
-		req, err = c.newRequest(context.Background(), instance, http.MethodGet, path, nil)
-		if err != nil {
-			return -1, fmt.Errorf("creating request: %v", err)
-		}
-
-		status, err = c.downloadFile(req, dst, b)
+		status, err = c.downloadFile(dst, instance, path, b)
 		if err != nil {
 			return status, err
 		}
-
 		if status == http.StatusRequestTimeout {
-			exponentialBackoff(i, 30*time.Second) // exponential backoff
+			ex := exponentialBackoff(i, 30*time.Second) // exponential backoff
+			time.Sleep(ex)
 			continue
 		}
 		break
@@ -247,10 +238,16 @@ func (c *Client) getFileSize(instance, path string) (int64, error) {
 	return resp.ContentLength, nil
 }
 
-func (c *Client) downloadFile(req *http.Request, dst *DownloadTracker, buffer []byte) (int, error) {
+func (c *Client) downloadFile(dst *DownloadTracker, instance, path string, buffer []byte) (int, error) {
+	req, err := c.newRequest(context.Background(), instance, http.MethodGet, path, nil)
+	if err != nil {
+		return -1, fmt.Errorf("creating request: %v", err)
+	}
+
 	// in case of resume
 	startRange := dst.d.Load() // how much is already downloaded
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-", startRange))
+
 	resp, err := c.c.Do(req)
 	if err != nil {
 		var urlErr *url.Error

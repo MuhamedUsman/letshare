@@ -74,6 +74,13 @@ func (pk preferenceKey) string() string {
 	return prefKeyNames[pk]
 }
 
+type scrollDirection = int
+
+const (
+	up scrollDirection = iota
+	down
+)
+
 type preferenceQue struct {
 	title preferenceKey
 	desc  string
@@ -85,12 +92,6 @@ type preferenceQue struct {
 	// a pSec of an option type has this check
 	check bool // true -> positive!, false -> negative
 }
-
-type preferenceInactiveMsg struct{}
-
-// to signal extensionSpaceModel to switch back to the previous child model
-// as the user is done with the preference model.
-func preferenceInactiveCmd() tea.Msg { return preferenceInactiveMsg{} }
 
 type preferenceModel struct {
 	vp             viewport.Model
@@ -181,7 +182,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			m.cursor = (m.cursor + 1) % len(m.preferenceQues)
 			m.handleViewportScroll(down)
 
-		case "down":
+		case "down", "j":
 			if m.cursor < len(m.preferenceQues)-1 {
 				m.cursor++
 			}
@@ -191,7 +192,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 			m.cursor = (m.cursor - 1 + len(m.preferenceQues)) % len(m.preferenceQues)
 			m.handleViewportScroll(up)
 
-		case "up":
+		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
 			}
@@ -264,13 +265,6 @@ func (m *preferenceModel) handleUpdate(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds[:]...)
 }
 
-type scrollDirection = int
-
-const (
-	up scrollDirection = iota
-	down
-)
-
 func (m *preferenceModel) handleViewportScroll(direction scrollDirection) {
 	if m.cursor == 0 {
 		m.vp.GotoTop()
@@ -305,7 +299,7 @@ func (m *preferenceModel) updateDimensions() {
 	h := extContainerWorkableH() - (statusBarH + helpH + viewportFrameH)
 	w := largeContainerW()
 	m.vp.Width, m.vp.Height = w, h
-	w = 50
+	w = 50 // input field width
 	if m.vp.Width < w {
 		w = m.vp.Width
 
@@ -537,7 +531,7 @@ func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.handleViewportScroll(up)
 	m.renderViewport()
 	m.active = false
-	return preferenceInactiveCmd
+	return msgToCmd(preferenceInactiveMsg{})
 }
 
 func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
@@ -611,7 +605,7 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 		m.resetToSavedState()
 		return tea.Sequence(msgToCmd(rerenderPreferencesMsg{}), m.inactivePreference())
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
@@ -619,7 +613,7 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   yupFunc,
 		negativeFunc:   nopeFunc,
-	}.cmd
+	})
 }
 
 func (m preferenceModel) validateInput(in string) (bool, string) {
@@ -640,7 +634,7 @@ func (m preferenceModel) validateInput(in string) (bool, string) {
 }
 
 func (m preferenceModel) showInvalidInputAlert(txt string) tea.Cmd {
-	return alertDialogMsg{header: "INVALID INPUT!", body: txt}.cmd
+	return msgToCmd(alertDialogMsg{header: "INVALID INPUT!", body: txt})
 }
 
 func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {

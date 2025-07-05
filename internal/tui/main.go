@@ -106,6 +106,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, msgToCmd(extensionChildSwitchMsg{child: preference, focus: true})
 			}
 
+		case "ctrl+d":
+			if !m.confirmation.active {
+				return m, msgToCmd(extensionChildSwitchMsg{child: download, focus: true})
+			}
+
 		case "tab":
 			// loop currentFocus & extendSpace b/w local, extensionSpace and remote tabs
 			currentFocus++
@@ -149,7 +154,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Interrupt
 		}
-		return m, alertDialogMsg{header: msg.errHeader, body: msg.errStr}.cmd
+		return m, msgToCmd(alertDialogMsg{header: msg.errHeader, body: msg.errStr})
 	}
 
 	return m, m.handleChildModelUpdates(msg)
@@ -182,6 +187,6 @@ func (m *MainModel) updateKeymapsByFocus() {
 func shutdownBgTasks() {
 	bgTask := bgtask.Get()
 	if err := bgTask.Shutdown(5 * time.Second); err != nil {
-		slog.Error("failed to shutdown background task", "tasks", bgTask.Tasks, "error", err)
+		slog.Error(err.Error())
 	}
 }

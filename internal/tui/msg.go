@@ -71,6 +71,12 @@ type downloadSelectionsMsg struct {
 // bool indicates whether to inactivate the preferences model or not
 type preferencesSavedMsg bool
 
+// to signal extensionSpaceModel to switch back to the previous child model
+// as the user is done with the preference model.
+type preferenceInactiveMsg struct{}
+
+type downloadInactiveMsg struct{}
+
 type progressMsg uint64
 
 type zippingLogMsg string

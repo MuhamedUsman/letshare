@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,10 +17,10 @@ var (
 // BackgroundTask manages a collection of goroutines with a shared lifecycle.
 // It provides a mechanism to run, track, and gracefully shut down background tasks.
 type BackgroundTask struct {
-	wg     *sync.WaitGroup
 	ctx    context.Context
 	cancel context.CancelFunc
-	Tasks  int
+	wg     sync.WaitGroup
+	tasks  atomic.Int32
 }
 
 // Get returns a singleton BackgroundTask instance.
@@ -28,7 +29,6 @@ func Get() *BackgroundTask {
 	ctx, cancel := context.WithCancel(context.Background())
 	oneBt.Do(func() {
 		bt = &BackgroundTask{
-			wg:     &sync.WaitGroup{},
 			ctx:    ctx,
 			cancel: cancel,
 		}
@@ -47,11 +47,11 @@ func (bt *BackgroundTask) ShutdownCtx() context.Context {
 // Automatically handles panics and decrements task count when the goroutine completes.
 func (bt *BackgroundTask) Run(fn func(shutdownCtx context.Context)) {
 	bt.wg.Add(1)
-	bt.Tasks++
+	bt.tasks.Add(1)
 	go func() {
 		defer func() {
 			bt.wg.Done()
-			bt.Tasks--
+			bt.tasks.Add(-1)
 			if r := recover(); r != nil {
 				slog.Error(fmt.Errorf("%v", r).Error())
 			}
@@ -62,10 +62,10 @@ func (bt *BackgroundTask) Run(fn func(shutdownCtx context.Context)) {
 
 func (bt *BackgroundTask) RunAndBlock(fn func(shutdownCtx context.Context)) {
 	bt.wg.Add(1)
-	bt.Tasks++
+	bt.tasks.Add(1)
 	defer func() {
 		bt.wg.Done()
-		bt.Tasks--
+		bt.tasks.Add(-1)
 		if r := recover(); r != nil {
 			slog.Error(fmt.Errorf("%v", r).Error())
 		}
@@ -87,6 +87,6 @@ func (bt *BackgroundTask) Shutdown(timeout time.Duration) error {
 	case <-wait:
 		return nil
 	case <-time.After(timeout):
-		return fmt.Errorf("shutdown timeout, some background tasks may not have finished, \"count\"=%v", bt.Tasks)
+		return fmt.Errorf("shutdown timeout, some background tasks may not have finished, \"count\"=%v", bt.tasks.Load())
 	}
 }

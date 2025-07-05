@@ -95,10 +95,10 @@ func getTableCols(tableWidth int) []table.Column {
 	// precision loss from above division ops
 	nameW += int(math.Abs(float64(tableWidth - (sizeW + typeW + nameW))))
 	return []table.Column{
-		{cols[0], selectionW},
-		{cols[1], nameW},
-		{cols[2], typeW},
-		{cols[3], sizeW},
+		{Title: cols[0], Width: selectionW},
+		{Title: cols[1], Width: nameW},
+		{Title: cols[2], Width: typeW},
+		{Title: cols[3], Width: sizeW},
 	}
 }
 
@@ -528,14 +528,14 @@ func (m *extDirNavModel) confirmDiscardSelOnNewExtDir(msg extendDirMsg) tea.Cmd 
 	positiveFunc := func() tea.Cmd {
 		return m.readDir(msg.path)
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
@@ -555,14 +555,14 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 		m.selectAll(m.allSelected)
 		return cmd
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m *extDirNavModel) confirmSend() tea.Cmd {
@@ -590,14 +590,14 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 		})
 		return tea.Batch(cmd, msgToCmd(extensionChildSwitchMsg{child: home}), msgToCmd(resetExtDirTableSelectionsMsg{}))
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m *extDirNavModel) updateKeymap(disable bool) {

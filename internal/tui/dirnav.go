@@ -435,8 +435,12 @@ func (m *dirNavModel) extendDir(msg tea.Msg) tea.Cmd {
 func (m *dirNavModel) updateDirListAndGetSelectedDir(msg tea.Msg) (tea.Cmd, string) {
 	var cmd tea.Cmd
 	m.dirList, cmd = m.dirList.Update(msg)
-	selDir := m.dirList.SelectedItem().FilterValue()
-	return cmd, selDir
+	selItem := m.dirList.SelectedItem()
+	if selItem != nil {
+		selDir := m.dirList.SelectedItem().FilterValue()
+		return cmd, selDir
+	}
+	return cmd, ""
 }
 
 func (m *dirNavModel) handleDirListUpdate(msg tea.Msg) tea.Cmd {

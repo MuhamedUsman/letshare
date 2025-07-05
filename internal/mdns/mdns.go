@@ -6,6 +6,7 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/betamos/zeroconf"
 	"log/slog"
+	"maps"
 	"net/netip"
 	"sync"
 )
@@ -162,11 +163,9 @@ func (r *MDNS) NotifyOnChange() <-chan struct{} {
 func (r *MDNS) Entries() ServiceEntries {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	c := make(ServiceEntries, len(r.entries)) // copy
-	for k, v := range r.entries {
-		c[k] = v
-	}
-	return c
+	dst := make(ServiceEntries, len(r.entries))
+	maps.Copy(dst, r.entries)
+	return dst
 }
 
 func (r *MDNS) ReloadPublisher() {

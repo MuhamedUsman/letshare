@@ -108,16 +108,18 @@ type processFilesModel struct {
 }
 
 func initialProcessFilesModel() processFilesModel {
-	p := progress.New(
-		progress.WithGradient(subduedHighlightColor.Dark, highlightColor.Dark),
-		progress.WithoutPercentage(),
-	)
 	return processFilesModel{
 		zipTracker:    &zipTracker{state: -1},
 		titleStyle:    titleStyle.Margin(0, 2),
-		progress:      p,
 		disableKeymap: true,
 	}
+}
+
+func newProgressModel() progress.Model {
+	return progress.New(
+		progress.WithGradient(subduedHighlightColor.Dark, highlightColor.Dark),
+		progress.WithoutPercentage(),
+	)
 }
 
 func (m processFilesModel) capturesKeyEvent(msg tea.KeyMsg) bool {
@@ -172,6 +174,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		progCh := make(chan uint64, 1)
 		logCh := make(chan string)
 		m.zipTracker = newZipTracker(shutdownCtx, progCh, logCh)
+		m.progress = newProgressModel()
 		m.updateDimensions() // update the logs length
 
 		cfg, err := config.Get()
@@ -345,7 +348,7 @@ func (m processFilesModel) renderProgress() string {
 	// 1.2GB/2.3GB                      100.0%
 	p := table.New().
 		Row(progressCounter, percentage).Border(lipgloss.HiddenBorder()).
-		BorderTop(false).BorderLeft(false).BorderRight(false).
+		BorderTop(false).BorderLeft(false).BorderRight(false).BorderBottom(false).
 		Width(smallContainerW()).Wrap(false).
 		StyleFunc(func(_, c int) lipgloss.Style {
 			baseStyle := lipgloss.NewStyle().Foreground(highlightColor)
@@ -444,14 +447,14 @@ func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
 		}
 		return nil
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
@@ -469,7 +472,7 @@ func (m processFilesModel) showZippingErrAlert(err error) tea.Cmd {
 	} else {
 		b = "Unexpected error occurred while zipping files."
 	}
-	return alertDialogMsg{header: "ZIPPING ERROR", body: b}.cmd
+	return msgToCmd(alertDialogMsg{header: "ZIPPING ERROR", body: b})
 }
 
 func (m processFilesModel) grantExtSpaceSwitch() bool {
