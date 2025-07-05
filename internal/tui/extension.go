@@ -13,6 +13,7 @@ const (
 	extSend
 	extReceive
 	preference
+	download
 )
 
 type extensionSpaceModel struct {
@@ -20,6 +21,7 @@ type extensionSpaceModel struct {
 	extSend                      extSendModel
 	extReceive                   extReceiveModel
 	preference                   preferenceModel
+	download                     downloadModel
 	titleStyle                   lipgloss.Style
 	extendedSpace                focusSpace
 	dirToExtend                  string
@@ -31,9 +33,10 @@ type extensionSpaceModel struct {
 func initialExtensionSpaceModel() extensionSpaceModel {
 	return extensionSpaceModel{
 		extDirNav:     initialExtDirNavModel(),
-		preference:    initialPreferenceModel(),
 		extSend:       initialExtSendModel(),
 		extReceive:    initialExtReceiveModel(),
+		preference:    initialPreferenceModel(),
+		download:      initialDownloadModel(),
 		titleStyle:    titleStyle,
 		disableKeymap: true,
 	}
@@ -51,6 +54,8 @@ func (m extensionSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 		return m.extReceive.capturesKeyEvent(msg)
 	case preference:
 		return m.preference.capturesKeyEvent(msg)
+	case download:
+		return m.download.capturesKeyEvent(msg)
 	default:
 		return false
 	}
@@ -61,9 +66,7 @@ func (m extensionSpaceModel) Init() tea.Cmd {
 }
 
 func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) {
-
 	switch msg := msg.(type) {
-
 	case tea.KeyMsg:
 		if m.disableKeymap {
 			return m, nil
@@ -90,7 +93,7 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 		}
 		// so we can switch focus back to prev active space
 		// after preference is deactivated
-		if msg.child == preference {
+		if msg.child == preference || msg.child == download {
 			m.prevFocus = currentFocus
 		}
 		if msg.child == home {
@@ -106,7 +109,7 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 			return m, msgToCmd(extensionChildSwitchMsg{child: extDirNav, focus: false})
 		}
 
-	case preferenceInactiveMsg:
+	case preferenceInactiveMsg, downloadInactiveMsg:
 		if m.prevFocus != extension {
 			currentFocus = m.prevFocus
 			return m, tea.Batch(
@@ -144,6 +147,8 @@ func (m extensionSpaceModel) View() string {
 		view = m.extReceive.View()
 	case preference:
 		view = m.preference.View()
+	case download:
+		view = m.download.View()
 	default:
 		view = ""
 	}
@@ -151,11 +156,12 @@ func (m extensionSpaceModel) View() string {
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
-	var cmds [4]tea.Cmd
+	var cmds [5]tea.Cmd
 	m.extDirNav, cmds[0] = m.extDirNav.Update(msg)
 	m.extSend, cmds[1] = m.extSend.Update(msg)
 	m.extReceive, cmds[2] = m.extReceive.Update(msg)
 	m.preference, cmds[3] = m.preference.Update(msg)
+	m.download, cmds[4] = m.download.Update(msg)
 	return tea.Batch(cmds[:]...)
 }
 
@@ -177,4 +183,5 @@ func (m *extensionSpaceModel) updateKeymap(disable bool) {
 	m.extSend.updateKeymap(disable || m.activeChild != extSend)
 	m.extReceive.updateKeymap(disable || m.activeChild != extReceive)
 	m.preference.updateKeymap(disable || m.activeChild != preference)
+	m.download.updateKeymap(disable || m.activeChild != download)
 }

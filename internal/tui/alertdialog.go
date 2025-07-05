@@ -28,10 +28,6 @@ type alertDialogMsg struct {
 	positiveFunc, negativeFunc, escFunc func() tea.Cmd
 }
 
-func (adm alertDialogMsg) cmd() tea.Msg {
-	return adm
-}
-
 type alertDialogModel struct {
 	// header and body of the dialog box
 	header, body string

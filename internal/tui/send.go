@@ -414,23 +414,23 @@ func (m *sendModel) confirmEsc() tea.Cmd {
 		m.isSelected, m.isServing = false, false
 		return tea.Batch(msgToCmd(localChildSwitchMsg{child: dirNav, focus: true}), m.deleteTempFiles())
 	}
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
 		positiveFunc:   positiveFunc,
-	}.cmd
+	})
 }
 
 func (m sendModel) showShutdownReqWhenNotIdleAlert(reqBy string) tea.Cmd {
 	body := fmt.Sprintf("%q requested shutdown, but the server is currently serving files. Consider shutting down when idle.", reqBy)
-	return alertDialogMsg{
+	return msgToCmd(alertDialogMsg{
 		header:        "SHUTDOWN REQUEST",
 		body:          body,
 		alertDuration: 10 * time.Second,
-	}.cmd
+	})
 }
 
 func customSendHelp(show bool) *lipTable.Table {

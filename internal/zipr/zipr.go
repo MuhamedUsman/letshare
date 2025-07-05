@@ -118,8 +118,8 @@ main:
 			wp.Spawn(func() error {
 				dirToZip := filepath.Join(root, dir)
 				archiveName := dir + ".zip"
-				var archivePath string
-				if archivePath, err = z.CreateArchive(path, archiveName, dirToZip); err != nil {
+				archivePath, err := z.CreateArchive(path, archiveName, dirToZip)
+				if err != nil {
 					return err
 				}
 				zippedDirs[i] = archivePath

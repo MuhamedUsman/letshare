@@ -206,6 +206,19 @@ var ( // prepSelModel Styles
 						BorderForeground(highlightColor)
 )
 
+var (
+	downloadCardContainerStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(subduedHighlightColor).
+					Padding(0, 1)
+
+	downloadCardProgressStyle = lipgloss.NewStyle().
+					Background(highlightColor).
+					Foreground(subduedHighlightColor).
+					Faint(true).
+					Padding(0, 1)
+)
+
 var ( // alertDialogModel Styles
 
 	alertDialogContainerStyle = lipgloss.NewStyle().

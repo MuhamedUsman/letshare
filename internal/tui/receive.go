@@ -88,6 +88,7 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 					m.instanceInput.SetValue(mdns.DefaultInstance)
 					s = mdns.DefaultInstance
 				}
+				s = instanceExtractor.Replace(s)
 				m.trackInstance.Store(ptr(s))
 				// make url once out of focus
 				m.instanceInput.SetValue(makeURL(s))
