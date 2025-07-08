@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/MuhamedUsman/letshare/internal/client"
 	"github.com/MuhamedUsman/letshare/internal/server"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -63,9 +64,31 @@ type processSelectionsMsg struct {
 	dirs, files int
 }
 
-type downloadSelectionsMsg struct {
-	files []string
+type downloadSelection struct {
+	name, size string
+	accessID   uint32
 }
+
+type downloadSelectionsMsg struct {
+	instance   string // instance name to download from
+	selections []downloadSelection
+}
+
+type downloadCompletedMsg int
+
+type downloadFailedMsg struct {
+	// globalID used to identify the download in the download model
+	gid int
+	// errMsg is the error message to display
+	errMsg errMsg
+}
+
+type downloadProgressMsg struct {
+	p   client.Progress
+	gid int // global ID of the download
+}
+
+type deletionConfirmationMsg bool
 
 // preferencesSavedMsg signals the changes to the preferences are saved,
 // bool indicates whether to inactivate the preferences model or not
@@ -77,7 +100,7 @@ type preferenceInactiveMsg struct{}
 
 type downloadInactiveMsg struct{}
 
-type progressMsg uint64
+type processFilesProgressMsg uint64
 
 type zippingLogMsg string
 

@@ -55,6 +55,7 @@ const (
 	compression
 	sharedZipName
 	downloadFolder
+	concurrentDownloads
 )
 
 var prefKeyNames = []string{
@@ -65,6 +66,7 @@ var prefKeyNames = []string{
 	"COMPRESSED ZIP?",
 	"SHARED ZIP NAME",
 	"DOWNLOAD FOLDER",
+	"CONCURRENT DOWNLOADS",
 }
 
 func (pk preferenceKey) string() string {
@@ -98,9 +100,9 @@ type preferenceModel struct {
 	txtInput       textinput.Model
 	preferenceQues []preferenceQue
 	// used to check unsaved state
-	titleStyle                                  lipgloss.Style
-	cursor                                      int
-	showHelp, disableKeymap, active, insertMode bool
+	titleStyle                          lipgloss.Style
+	cursor                              int
+	showHelp, disableKeymap, insertMode bool
 }
 
 func initialPreferenceModel() preferenceModel {
@@ -135,7 +137,7 @@ func initialPreferenceModel() preferenceModel {
 }
 
 func (m preferenceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
-	return msg.String() != "ctrl+c" && m.active
+	return msg.String() != "ctrl+c"
 }
 
 func (m preferenceModel) Init() tea.Cmd {
@@ -150,7 +152,7 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 		m.renderViewport()
 
 	case tea.KeyMsg:
-		if m.disableKeymap || !m.active {
+		if m.disableKeymap {
 			return m, nil
 		}
 
@@ -228,9 +230,6 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 
 	case spaceFocusSwitchMsg:
 		m.updateTitleStyleAsFocus()
-
-	case extensionChildSwitchMsg:
-		m.active = msg.child == preference
 
 	case preferencesSavedMsg:
 		if msg {
@@ -522,6 +521,8 @@ func (m *preferenceModel) resetToSavedState() {
 			m.preferenceQues[i].input = cfg.Share.SharedZipName
 		case downloadFolder:
 			m.preferenceQues[i].input = cfg.Receive.DownloadFolder
+		case concurrentDownloads:
+			m.preferenceQues[i].input = strconv.Itoa(cfg.Receive.ConcurrentDownloads)
 		}
 	}
 }
@@ -530,7 +531,6 @@ func (m *preferenceModel) inactivePreference() tea.Cmd {
 	m.cursor = 0
 	m.handleViewportScroll(up)
 	m.renderViewport()
-	m.active = false
 	return msgToCmd(preferenceInactiveMsg{})
 }
 
@@ -552,6 +552,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 			cfg.Share.SharedZipName = q.input
 		case downloadFolder:
 			cfg.Receive.DownloadFolder = q.input
+		case concurrentDownloads:
+			cfg.Receive.ConcurrentDownloads, _ = strconv.Atoi(q.input)
 		}
 	}
 	return func() tea.Msg {
@@ -588,6 +590,8 @@ func (m preferenceModel) isUnsavedState() bool {
 			unsaved = q.input != cfg.Share.SharedZipName
 		case downloadFolder:
 			unsaved = q.input != cfg.Receive.DownloadFolder
+		case concurrentDownloads:
+			unsaved = q.input != strconv.Itoa(cfg.Receive.ConcurrentDownloads)
 		}
 	}
 	return unsaved
@@ -628,6 +632,9 @@ func (m preferenceModel) validateInput(in string) (bool, string) {
 	case downloadFolder:
 		fstat, err := os.Stat(in)
 		return err == nil && fstat.IsDir(), "Download folder must be a valid directory path with read & write access."
+	case concurrentDownloads:
+		n, err := strconv.Atoi(in)
+		return err == nil && n >= 1 && n <= 10, "Concurrent downloads must be a number between 1 and 10."
 	default:
 		return true, ""
 	}
@@ -691,6 +698,14 @@ func populatePreferencesFromConfig(cfg config.Config) []preferenceQue {
 			pType:  input,
 			pSec:   receive,
 			input:  cfg.Receive.DownloadFolder,
+		},
+		{
+			title:  concurrentDownloads,
+			desc:   "Maximum number of files that can be downloaded concurrently.",
+			prompt: "Count: ",
+			pType:  input,
+			pSec:   receive,
+			input:  strconv.Itoa(cfg.Receive.ConcurrentDownloads),
 		},
 	}
 }

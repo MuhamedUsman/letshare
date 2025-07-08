@@ -163,6 +163,23 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.updateTitleStyleAsFocus()
 
 	case processSelectionsMsg:
+
+		cfg, err := config.Get()
+		if errors.Is(err, config.ErrNoConfig) {
+			cfg, err = config.Load()
+		}
+		if err != nil {
+			return m, msgToCmd(errMsg{err: err, fatal: true})
+		}
+
+		if !cfg.Share.ZipFiles && msg.dirs == 0 {
+			files := make(sendFilesMsg, len(msg.filenames))
+			for i, f := range msg.filenames {
+				files[i] = filepath.Join(msg.parentPath, f)
+			}
+			return m, tea.Batch(msgToCmd(localChildSwitchMsg{child: send, focus: true}), msgToCmd(files))
+		}
+
 		m.selections = &selections{
 			rootPath:  msg.parentPath,
 			filenames: msg.filenames,
@@ -177,23 +194,6 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.progress = newProgressModel()
 		m.updateDimensions() // update the logs length
 
-		cfg, err := config.Get()
-		if errors.Is(err, config.ErrNoConfig) {
-			cfg, err = config.Load()
-		}
-		if err != nil {
-			return m, msgToCmd(errMsg{err: err, fatal: true})
-		}
-
-		if !cfg.Share.ZipFiles && m.selections.dirs == 0 {
-			files := make(sendFilesMsg, len(m.selections.filenames))
-			for i, f := range m.selections.filenames {
-				files[i] = filepath.Join(m.selections.rootPath, f)
-			}
-
-			return m, tea.Batch(msgToCmd(localChildSwitchMsg{child: send, focus: true}), msgToCmd(files))
-		}
-
 		return m, tea.Batch(
 			m.progress.Init(),
 			m.trackProgress(),
@@ -202,7 +202,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 			msgToCmd(localChildSwitchMsg{child: processFiles, focus: true}),
 		)
 
-	case progressMsg:
+	case processFilesProgressMsg:
 		m.zipTracker.updateProgress(uint64(msg))
 		percentage := float64(m.zipTracker.processed) / float64(m.zipTracker.totalSize)
 		return m, tea.Batch(m.progress.Init(), m.trackProgress(), m.progress.SetPercent(percentage))
@@ -419,7 +419,7 @@ func (m *processFilesModel) processFiles(
 func (m processFilesModel) trackProgress() tea.Cmd {
 	return func() tea.Msg {
 		for p := range m.zipTracker.progressCh {
-			return progressMsg(p)
+			return processFilesProgressMsg(p)
 		}
 		return nil
 	}

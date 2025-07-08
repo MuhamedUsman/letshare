@@ -23,6 +23,7 @@ type alertDialogMsg struct {
 	positiveBtnTxt, negativeBtnTxt string
 	cursor                         alertCursor
 	// alertDuration is used to set the timer for the alert dialog
+	// it defaults to 5 seconds
 	// takes effect only if positiveBtnTxt and negativeBtnTxt are nil
 	alertDuration                       time.Duration
 	positiveFunc, negativeFunc, escFunc func() tea.Cmd
@@ -70,7 +71,7 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
-		if currentFocus != confirmation {
+		if currentFocus != alert {
 			return m, nil
 		}
 		switch msg.String() {
@@ -114,8 +115,10 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 		m.positiveFunc, m.negativeFunc, m.escFunc = msg.positiveFunc, msg.negativeFunc, msg.escFunc
 		m.cursor = msg.cursor
 		m.active = true
-		m.prevFocus = currentFocus
-		currentFocus = confirmation
+		if currentFocus != alert { // in-case multiple alert dialogs become active
+			m.prevFocus = currentFocus
+		}
+		currentFocus = alert
 		// in this case, the dialog is just a simple alert, then start timer
 		if m.isTimerAlert() {
 			d := 5 * time.Second // default
@@ -189,6 +192,10 @@ func (m alertDialogModel) getDialogWidth() int {
 		w -= 1
 	}
 	return w
+}
+
+func (m *alertDialogModel) updateKeymap(disable bool) {
+	m.disableKeymap = disable
 }
 
 func (m *alertDialogModel) hide() tea.Cmd {

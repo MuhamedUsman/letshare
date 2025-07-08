@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/mattn/go-runewidth"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -103,6 +102,8 @@ func (m sendModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "left", "right", "h", "l", "enter", " ", "q", "Q", "?":
 		return !m.disableKeymap
+	case "ctrl+r":
+		return m.isSelected && m.isServing
 	case "esc":
 		return m.instanceState == idle && !m.disableKeymap
 	default:
@@ -138,7 +139,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				m.selected = m.btnIdx
 				conf := m.getConfig()
 				m.customInstance = conf.Share.InstanceName
-				lch, dch := make(chan server.Log, 10), make(chan int, 1)
+				lch, dch := make(chan server.Log, 10), make(chan int, 10)
 				m.server = server.New(conf.Share.StoppableInstance, lch, dch)
 				extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
 				return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
@@ -157,6 +158,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 		case "ctrl+c":
 			if len(m.files) > 0 {
 				m.deleteTempFiles()
+			}
+
+		case "ctrl+r":
+			if m.isSelected && m.isServing {
+				m.mdns.ReloadPublisher()
 			}
 
 		case "esc":
@@ -202,7 +208,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 		case available:
 			m.isSelected = true
-			lch, dch := make(chan server.Log, 10), make(chan int, 1)
+			lch, dch := make(chan server.Log, 10), make(chan int, 10)
 			m.server = server.New(m.getConfig().Share.StoppableInstance, lch, dch)
 			extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
 			return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
@@ -433,36 +439,6 @@ func (m sendModel) showShutdownReqWhenNotIdleAlert(reqBy string) tea.Cmd {
 	})
 }
 
-func customSendHelp(show bool) *lipTable.Table {
-	baseStyle := lipgloss.NewStyle()
-	var rows [][]string
-	if !show {
-		rows = [][]string{{"?", "help"}}
-	} else {
-		rows = [][]string{
-			{"←/→ OR l/h", "switch button"},
-			{"enter", "select button"},
-			{"Q/q", "shutdown server"},
-			{"esc", "cancel sharing"},
-			{"?", "hide help"},
-		}
-	}
-	return lipTable.New().
-		Border(lipgloss.HiddenBorder()).
-		BorderBottom(true).
-		Wrap(false).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			switch col {
-			case 0:
-				return baseStyle.Foreground(highlightColor).Align(lipgloss.Left).Faint(true) // key style
-			case 1:
-				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
-			default:
-				return baseStyle
-			}
-		}).Rows(rows...)
-}
-
 func (m sendModel) getInstance() string {
 	cfg := m.getConfig()
 	switch m.selected {
@@ -503,7 +479,7 @@ func (m sendModel) notifyInstanceAvailability() tea.Cmd {
 
 func (m sendModel) notifyForShutdownReqWhenNotIdle() tea.Cmd {
 	return func() tea.Msg {
-		ch := make(chan string, 1) // client writes only once then closes the channel
+		ch := make(chan string, 1) // server writes only once then closes the channel
 		m.server.NotifyForShutdownReqWhenNotIdle(ch)
 		select {
 		case reqBy := <-ch:
@@ -539,7 +515,17 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			err = m.server.StartServer(m.files...)
 		})
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		// DeadlineExceeded: In case of graceful shutdown & active downloads
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return alertDialogMsg{
+					header: "GRACEFUL SHUTDOWN!",
+					body: fmt.Sprintf(
+						"Shutting down server, “%d” active downloads will be served, but no new requests will be accepted.",
+						m.server.ActiveDowns,
+					),
+				}
+			}
 			return errMsg{err: err, fatal: true}
 		}
 		return instanceShutdownMsg{}
@@ -549,30 +535,28 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 	return tea.Batch(cmds[:]...)
 }
 
-func (m *sendModel) shutdownServer(quit bool) tea.Cmd {
+func (m *sendModel) shutdownServer(force bool) tea.Cmd {
 	return func() tea.Msg {
-		if err := m.server.ShutdownServer(false); err != nil && errors.Is(err, server.ErrNonIdle) {
-			positiveFunc := func() tea.Cmd {
-				_ = m.server.ShutdownServer(true)
-				if quit {
-					shutdownBgTasks()
-					return tea.Quit
+		if force {
+			if m.server.ActiveDowns > 0 {
+				return alertDialogMsg{
+					header:         "FORCED SHUTDOWN!",
+					body:           "The server instance is being shutdown forcefully, all active downloads will abruptly halt.",
+					positiveBtnTxt: "YUP!",
+					negativeBtnTxt: "NOPE!",
+					cursor:         positive,
+					positiveFunc: func() tea.Cmd {
+						m.server.ShutdownServer()
+						shutdownBgTasks()
+						return tea.Quit
+					},
 				}
-				return msgToCmd(instanceShutdownMsg{})
 			}
-			return alertDialogMsg{
-				header:         "FORCE SHUTDOWN?",
-				body:           "The server is currently serving files, do you want to force shutdown, ongoing downloads will abruptly halt.",
-				positiveBtnTxt: "YUP!",
-				negativeBtnTxt: "NOPE",
-				cursor:         positive,
-				positiveFunc:   positiveFunc,
-			}
-		}
-		if quit {
+			m.server.ShutdownServer()
 			shutdownBgTasks()
 			return tea.Quit()
 		}
+		m.server.ShutdownServer()
 		return instanceShutdownMsg{}
 	}
 }
@@ -610,9 +594,7 @@ func (m sendModel) deleteTempFiles() tea.Cmd {
 	return func() tea.Msg {
 		for _, p := range m.files {
 			if strings.HasPrefix(p, os.TempDir()) {
-				if err := os.Remove(p); err != nil {
-					slog.Error("deleting temp files", "err", err)
-				}
+				_ = os.Remove(p)
 			}
 		}
 		return nil
@@ -621,4 +603,35 @@ func (m sendModel) deleteTempFiles() tea.Cmd {
 
 func (m sendModel) grantExtSpaceSwitch() bool {
 	return m.isServing || m.isShutdown
+}
+
+func customSendHelp(show bool) *lipTable.Table {
+	baseStyle := lipgloss.NewStyle()
+	var rows [][]string
+	if !show {
+		rows = [][]string{{"?", "help"}}
+	} else {
+		rows = [][]string{
+			{"←/→ OR l/h", "switch button"},
+			{"enter", "select button"},
+			{"Q/q", "shutdown server"},
+			{"esc", "cancel sharing"},
+			{"ctrl+r", "reload MDNS publisher"},
+			{"?", "hide help"},
+		}
+	}
+	return lipTable.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderBottom(true).
+		Wrap(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			switch col {
+			case 0:
+				return baseStyle.Foreground(highlightColor).Align(lipgloss.Left).Faint(true) // key style
+			case 1:
+				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
+			default:
+				return baseStyle
+			}
+		}).Rows(rows...)
 }

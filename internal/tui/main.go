@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/tui/overlay"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,7 +16,7 @@ const (
 	local focusSpace = iota
 	extension
 	remote
-	confirmation
+	alert
 )
 
 var (
@@ -47,7 +48,7 @@ type MainModel struct {
 	localSpace         localSpaceModel
 	extensionSpace     extensionSpaceModel
 	remoteSpace        remoteSpaceModel
-	confirmation       alertDialogModel
+	alertDialog        alertDialogModel
 	finalErrCh         FinalErrCh
 	isFinalErrChClosed bool // true if finalErrCh is already closed
 }
@@ -60,7 +61,7 @@ func InitialMainModel(ch FinalErrCh) MainModel {
 		localSpace:     initialLocalSpaceModel(),
 		extensionSpace: initialExtensionSpaceModel(),
 		remoteSpace:    initialRemoteSpaceModel(),
-		confirmation:   initialAlertDialogModel(),
+		alertDialog:    initialAlertDialogModel(),
 		finalErrCh:     ch,
 	}
 }
@@ -73,8 +74,8 @@ func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 		return m.extensionSpace.capturesKeyEvent(msg)
 	case remote:
 		return m.remoteSpace.capturesKeyEvent(msg)
-	case confirmation:
-		return m.confirmation.capturesKeyEvent(msg)
+	case alert:
+		return m.alertDialog.capturesKeyEvent(msg)
 	default:
 		return false
 	}
@@ -82,7 +83,7 @@ func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 
 func (m MainModel) Init() tea.Cmd {
 	currentFocus = local
-	return tea.Batch(m.localSpace.Init(), m.extensionSpace.Init(), m.remoteSpace.Init(), m.confirmation.Init())
+	return tea.Batch(m.localSpace.Init(), m.extensionSpace.Init(), m.remoteSpace.Init(), m.alertDialog.Init())
 }
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -101,13 +102,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 
 		case "ctrl+p":
-			// don't show preferences if the confirmation dialog is active
-			if !m.confirmation.active {
+			// don't show preferences if the alert dialog is active
+			if !m.alertDialog.active {
 				return m, msgToCmd(extensionChildSwitchMsg{child: preference, focus: true})
 			}
 
 		case "ctrl+d":
-			if !m.confirmation.active {
+			if !m.alertDialog.active {
 				return m, msgToCmd(extensionChildSwitchMsg{child: download, focus: true})
 			}
 
@@ -154,7 +155,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Interrupt
 		}
-		return m, msgToCmd(alertDialogMsg{header: msg.errHeader, body: msg.errStr})
+		return m, msgToCmd(alertDialogMsg{header: msg.errHeader, body: msg.errStr, alertDuration: 10 * time.Second})
 	}
 
 	return m, m.handleChildModelUpdates(msg)
@@ -162,8 +163,8 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m MainModel) View() string {
 	v := lipgloss.JoinHorizontal(lipgloss.Top, m.localSpace.View(), m.extensionSpace.View(), m.remoteSpace.View())
-	if m.confirmation.active {
-		v = overlay.Place(lipgloss.Center, lipgloss.Center, v, m.confirmation.View())
+	if m.alertDialog.active {
+		v = overlay.Place(lipgloss.Center, lipgloss.Center, v, m.alertDialog.View())
 	}
 	return mainContainerStyle.Width(workableW()).Height(workableH()).Render(v)
 }
@@ -173,20 +174,31 @@ func (m *MainModel) handleChildModelUpdates(msg tea.Msg) tea.Cmd {
 	m.localSpace, cmds[0] = m.localSpace.Update(msg)
 	m.extensionSpace, cmds[1] = m.extensionSpace.Update(msg)
 	m.remoteSpace, cmds[2] = m.remoteSpace.Update(msg)
-	m.confirmation, cmds[3] = m.confirmation.Update(msg)
+	m.alertDialog, cmds[3] = m.alertDialog.Update(msg)
 	return tea.Batch(cmds...)
 }
 
+// disables keymaps for the spaces that are not focused
 func (m *MainModel) updateKeymapsByFocus() {
 	m.localSpace.updateKeymap(currentFocus != local)
 	m.extensionSpace.updateKeymap(currentFocus != extension)
 	m.remoteSpace.updateKeymap(currentFocus != remote)
-	m.confirmation.disableKeymap = currentFocus != confirmation
+	m.alertDialog.updateKeymap(currentFocus != alert)
 }
 
 func shutdownBgTasks() {
 	bgTask := bgtask.Get()
 	if err := bgTask.Shutdown(5 * time.Second); err != nil {
 		slog.Error(err.Error())
+	}
+}
+
+func unwrapErr(err error) error {
+	for {
+		unwrapped := errors.Unwrap(err)
+		if unwrapped == nil {
+			return err
+		}
+		err = unwrapped
 	}
 }

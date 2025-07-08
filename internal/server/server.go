@@ -103,18 +103,24 @@ func (s *Server) StartServer(filePaths ...string) error {
 		addr = fmt.Sprint(ipAddr.String(), ":8080")
 	}
 
+	var proto http.Protocols
+	proto.SetUnencryptedHTTP2(true)
+	proto.SetHTTP1(true)
+
 	server := &http.Server{
 		Addr:              addr,
+		Handler:           s.routes(),
 		ReadTimeout:       4 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 		IdleTimeout:       10 * time.Second,
-		Handler:           s.routes(),
+		Protocols:         &proto,
 	}
 
 	s.setFilePaths(filePaths...)
 	defer func() {
 		s.deleteTempFiles()
 		close(s.log.logCh)
+		close(s.log.activeDownCh)
 	}()
 
 	errChan := s.listenAndShutdown(server)
@@ -129,14 +135,10 @@ func (s *Server) StartServer(filePaths ...string) error {
 	return nil
 }
 
-func (s *Server) ShutdownServer(force bool) error {
+func (s *Server) ShutdownServer() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.ActiveDowns == 0 || force {
-		s.StopCtxCancel()
-		return nil
-	}
-	return ErrNonIdle
+	s.StopCtxCancel()
 }
 
 func (s *Server) NotifyForShutdownReqWhenNotIdle(ch chan<- string) {
@@ -149,13 +151,13 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	errChan := make(chan error)
 	go func() {
 		<-s.StopCtx.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer func() {
-			cancel()
 			close(errChan)
 		}()
-		if err := server.Shutdown(ctx); err != nil {
-			errChan <- fmt.Errorf("shutting down server: %v", err)
+		// just pass in the same context so it returns immediately
+		// otherwise there will be a lag on shutdown (not UX friendly)
+		if err := server.Shutdown(s.StopCtx); err != nil {
+			errChan <- err
 		}
 	}()
 	return errChan
@@ -246,7 +248,7 @@ func (s *Server) serveFileHandler(w http.ResponseWriter, r *http.Request) {
 	filename := filepath.Base(filePath)
 
 	var reqBy string
-	shouldLog := shouldLogReq(r.RemoteAddr) && r.Method == "GET" && r.Header.Get("Range") == ""
+	shouldLog := shouldLogReq(r.RemoteAddr) && r.Method == "GET"
 
 	if shouldLog {
 		reqBy = r.Header.Get("X-Requested-By")

@@ -92,7 +92,7 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 			m.activeChild = msg.child
 		}
 		// so we can switch focus back to prev active space
-		// after preference is deactivated
+		// after preference OR download is deactivated
 		if msg.child == preference || msg.child == download {
 			m.prevFocus = currentFocus
 		}

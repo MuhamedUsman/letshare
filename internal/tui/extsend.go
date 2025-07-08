@@ -43,7 +43,7 @@ func (h *logHandler) setLogsLength(l int) {
 }
 
 // extSendModel is the model to read & view logs when server is running
-// such as who is connected, what indexes are being downloaded, etc.
+// such as who is connected, what files are being downloaded, etc.
 type extSendModel struct {
 	escTimer                timer.Model
 	lh                      *logHandler
@@ -121,6 +121,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 
 	case timer.TimeoutMsg:
 		if msg.ID == m.escTimer.ID() {
+			m.activeDowns = 0
 			return m, msgToCmd(serverLogsTimeoutMsg{}) // extensionSpaceModel handles this & switch back to extDirNav
 		}
 	}

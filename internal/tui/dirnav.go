@@ -154,6 +154,11 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 
 		case "enter":
 			if m.dirList.FilterState() != list.Filtering && m.dirList.SelectedItem() != nil {
+				gIdx := m.dirList.GlobalIndex()
+				if m.dirList.FilterState() == list.FilterApplied {
+					m.dirList.ResetFilter()
+					m.dirList.Select(gIdx) // reselect the item after filter reset
+				}
 				selDir := m.dirList.SelectedItem().FilterValue()
 				selDir = filepath.Join(m.curDirPath, selDir) // Dir in
 				return m, m.readDir(selDir, in)
@@ -175,9 +180,12 @@ func (m dirNavModel) Update(msg tea.Msg) (dirNavModel, tea.Cmd) {
 					m.dirList.ResetFilter()
 					m.dirList.Select(gIdx) // reselect the item after filter reset
 				}
-				selDir := m.dirList.SelectedItem().FilterValue()
-				selPath := filepath.Join(m.curDirPath, selDir)
-				return m, msgToCmd(extendDirMsg{selPath, true})
+				selItem := m.dirList.SelectedItem()
+				if selItem != nil {
+					selDir := selItem.FilterValue()
+					selPath := filepath.Join(m.curDirPath, selDir)
+					return m, msgToCmd(extendDirMsg{selPath, true})
+				}
 			}
 
 		case "?":

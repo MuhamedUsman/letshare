@@ -40,7 +40,7 @@ type dirContent struct {
 
 type dirContents struct {
 	contents []dirContent
-	// indices of filtered contents,
+	// indices of download contents,
 	//if filteredState == filtering || filterApplied
 	filteredContents []int
 	parentDir        string

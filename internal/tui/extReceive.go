@@ -35,7 +35,7 @@ type extReceiveModel struct {
 	titleStyle                             lipgloss.Style
 	filterState                            filterState
 	files                                  fileIndexes
-	focusOnExtend, showHelp, disableKeymap bool
+	showHelp, disableKeymap                bool
 	allSelected, isFetching, filterChanged bool
 }
 
@@ -373,13 +373,21 @@ func (m extReceiveModel) getSelectionCount() int {
 	return count
 }
 
-func (m extReceiveModel) selectedFileNames() []string {
-	files := make([]string, 0, len(m.files.indexes))
+func (m extReceiveModel) selectedFilesAsDownloadMsg() []downloadSelection {
+	files := make([]downloadSelection, 0, len(m.files.indexes))
 	for _, idx := range m.files.indexes {
 		if !idx.selection {
 			continue
 		}
-		files = append(files, idx.name)
+		if idx.ext != "---" && idx.ext != "" {
+			idx.name = fmt.Sprintf("%s.%s", idx.name, idx.ext)
+		}
+		ds := downloadSelection{
+			name:     idx.name,
+			size:     idx.size,
+			accessID: idx.accessID,
+		}
+		files = append(files, ds)
 	}
 	return files
 }
@@ -412,15 +420,16 @@ func (m *extReceiveModel) confirmDiacardSel(space extChild) tea.Cmd {
 }
 
 func (m *extReceiveModel) confirmDownload() tea.Cmd {
-	files := m.selectedFileNames()
+	sd := m.selectedFilesAsDownloadMsg() // selected downloads
 	selBtn := positive
 	header := "PROCEED?"
-	body := fmt.Sprintf(`Selected “%d files” will be downloaded as per preferences. To change preferences, press “esc” & “ctrl+p”.`, len(files))
+	body := fmt.Sprintf(`Selected “%d file/s” will be downloaded as per preferences. To change preferences, press “esc” & “ctrl+p”.`, len(sd))
 	positiveFunc := func() tea.Cmd {
-		cmd := msgToCmd(downloadSelectionsMsg{
-			files: files,
-		})
-		return tea.Batch(msgToCmd(resetExtFileIndexTableSelectionsMsg{}), cmd)
+		return tea.Batch(
+			msgToCmd(resetExtFileIndexTableSelectionsMsg{}),
+			msgToCmd(downloadSelectionsMsg{m.instance, sd}),
+			msgToCmd(extensionChildSwitchMsg{download, true}),
+		)
 	}
 	return msgToCmd(alertDialogMsg{
 		header:         header,

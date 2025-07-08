@@ -16,13 +16,12 @@ import (
 var instanceExtractor = strings.NewReplacer("http://", "", ".local", "")
 
 type receiveModel struct {
-	mdns                                       *mdns.MDNS
-	trackInstance                              *atomic.Pointer[string]
-	instanceInput                              textinput.Model
-	unsavedInput                               string
-	titleStyle                                 lipgloss.Style
-	fileFetchInitiated                         bool
-	disableKeymap, showHelp, instanceAvailable bool
+	mdns                                                    *mdns.MDNS
+	trackInstance                                           *atomic.Pointer[string]
+	instanceInput                                           textinput.Model
+	unsavedInput                                            string
+	titleStyle                                              lipgloss.Style
+	disableKeymap, fetchedOnce, showHelp, instanceAvailable bool
 }
 
 func initialReceiveModel() receiveModel {
@@ -50,7 +49,7 @@ func initialReceiveModel() receiveModel {
 
 func (m receiveModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 	switch msg.String() {
-	case "i", "I", "esc", "enter", " ", "?":
+	case "i", "I", "esc", "enter", " ", "ctrl+r", "?":
 		return !m.disableKeymap
 	default:
 		return m.instanceInput.Focused() && !m.disableKeymap && msg.String() != "ctrl+c"
@@ -98,11 +97,8 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 
 		case " ":
 			if m.instanceAvailable {
-				var fetchCmd tea.Cmd
-				if !m.fileFetchInitiated {
-					fetchCmd = msgToCmd(fetchFileIndexesMsg(*m.trackInstance.Load()))
-				}
-				m.fileFetchInitiated = true
+				m.fetchedOnce = true
+				fetchCmd := msgToCmd(fetchFileIndexesMsg(*m.trackInstance.Load()))
 				return m, tea.Batch(msgToCmd(extensionChildSwitchMsg{child: extReceive, focus: true}), fetchCmd)
 			}
 
@@ -112,6 +108,9 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 				m.instanceInput.SetValue(m.unsavedInput)
 				m.instanceInput.Blur()
 			}
+
+		case "ctrl+r":
+			m.mdns.ReloadBrowser()
 
 		case "?":
 			if !m.instanceInput.Focused() {
@@ -126,7 +125,6 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 	case instanceAvailabilityMsg:
 		m.instanceAvailable = bool(msg)
 		if !m.instanceAvailable {
-			m.fileFetchInitiated = false
 		}
 		return m, m.trackInstanceAvailabilityOnChange()
 
@@ -346,7 +344,7 @@ func (m receiveModel) trackInstanceAvailabilityOnChange() tea.Cmd {
 }
 
 func (m receiveModel) grantExtSpaceSwitch() bool {
-	return m.instanceAvailable && m.fileFetchInitiated
+	return m.instanceAvailable && m.fetchedOnce
 }
 
 func customReceiveHelp(show bool) *lipTable.Table {
@@ -360,6 +358,7 @@ func customReceiveHelp(show bool) *lipTable.Table {
 			{"i/I", "focus input field"},
 			{"esc", "blur input field"},
 			{"enter", "confirm input"},
+			{"ctrl+r", "reload MDNS browser"},
 			{"?", "hide help"},
 		}
 	}

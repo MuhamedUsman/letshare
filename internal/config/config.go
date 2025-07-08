@@ -45,7 +45,8 @@ type ShareConfig struct {
 }
 
 type ReceiveConfig struct {
-	DownloadFolder string `toml:"download_folder"`
+	DownloadFolder      string `toml:"download_folder"`
+	ConcurrentDownloads int    `toml:"concurrent_downloads"`
 }
 
 type Config struct {
@@ -71,6 +72,7 @@ func Get() (Config, error) {
 }
 
 // Load loads the configuration from the user's config file.
+// if not exists, it creates a new config file with default values.
 func Load() (Config, error) {
 	f, err := getUserConfigFile()
 	if err != nil {
@@ -148,7 +150,8 @@ func defaultConfig() (Config, error) {
 			SharedZipName:     "shared.zip",
 		},
 		Receive: ReceiveConfig{
-			DownloadFolder: downPath,
+			DownloadFolder:      downPath,
+			ConcurrentDownloads: 5,
 		},
 	}
 	return cfg, nil
