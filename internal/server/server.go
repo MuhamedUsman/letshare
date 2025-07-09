@@ -151,12 +151,13 @@ func (s *Server) listenAndShutdown(server *http.Server) chan error {
 	errChan := make(chan error)
 	go func() {
 		<-s.StopCtx.Done()
+		// if the app is shutting down, we need to shut down fast, so shutdownCtx as parent
+		ctx, cancel := context.WithTimeout(bgtask.Get().ShutdownCtx(), 2*time.Second)
 		defer func() {
+			cancel()
 			close(errChan)
 		}()
-		// just pass in the same context so it returns immediately
-		// otherwise there will be a lag on shutdown (not UX friendly)
-		if err := server.Shutdown(s.StopCtx); err != nil {
+		if err := server.Shutdown(ctx); err != nil {
 			errChan <- err
 		}
 	}()

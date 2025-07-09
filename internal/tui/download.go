@@ -299,6 +299,7 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 		m.addDownloads(msg.instance, msg.selections)
 		m.renderViewport()
 		ids := m.getDownloadIDs(added)
+		m.tabIdx = int(downloading) // switch to downloading tab
 		return m, m.startDownloads(ids...)
 
 	case downloadProgressMsg:
@@ -360,7 +361,17 @@ func (m downloadModel) renderStatusBar() string {
 	if tabTotal == 0 {
 		at = 0
 	}
-	s := fmt.Sprintf("Cursor: %d/%d", at, tabTotal)
+	speed := ""
+	if m.dm.activeDowns.Load() > 0 {
+		var s int32
+		for _, d := range m.dm.downloads {
+			if d.state == downloading {
+				s += d.prog.S
+			}
+		}
+		speed = fmt.Sprintf(" • Total Speed: %s/s", humanize.Bytes(uint64(s)))
+	}
+	s := fmt.Sprintf("Cursor: %d/%d%s", at, tabTotal, speed)
 	return extStatusBarStyle.Render(s)
 }
 
@@ -668,10 +679,11 @@ func (m downloadModel) deleteDownloads(ids ...int) {
 		if d.state == downloading {
 			_ = d.Close()
 			d.filename = d.Filename()
+			m.dm.activeDowns.Add(-1)
 		}
 		_ = os.Remove(d.filename) // ignore error, if file is not found, it is already deleted
-		d.DownloadTracker = nil   // dereference the tracker
 		d.state = deleted         // mark the download as deleted
+		d.DownloadTracker = nil   // dereference the tracker
 	}
 }
 

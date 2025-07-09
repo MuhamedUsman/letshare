@@ -163,7 +163,6 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		m.updateTitleStyleAsFocus()
 
 	case processSelectionsMsg:
-
 		cfg, err := config.Get()
 		if errors.Is(err, config.ErrNoConfig) {
 			cfg, err = config.Load()

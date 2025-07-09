@@ -139,7 +139,8 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				m.selected = m.btnIdx
 				conf := m.getConfig()
 				m.customInstance = conf.Share.InstanceName
-				lch, dch := make(chan server.Log, 10), make(chan int, 10)
+				// server uses non blocking send, so buffered channels
+				lch, dch := make(chan server.Log, 20), make(chan int, 20)
 				m.server = server.New(conf.Share.StoppableInstance, lch, dch)
 				extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
 				return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
@@ -208,7 +209,7 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 		case available:
 			m.isSelected = true
-			lch, dch := make(chan server.Log, 10), make(chan int, 10)
+			lch, dch := make(chan server.Log, 20), make(chan int, 20)
 			m.server = server.New(m.getConfig().Share.StoppableInstance, lch, dch)
 			extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
 			return m, tea.Sequence(extSendChCmd, m.publishInstanceAndStartServer())
@@ -517,7 +518,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 		})
 		// DeadlineExceeded: In case of graceful shutdown & active downloads
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				return alertDialogMsg{
 					header: "GRACEFUL SHUTDOWN!",
 					body: fmt.Sprintf(

@@ -25,6 +25,7 @@ var (
 )
 
 // eventCapturer defines an interface for types that can determine if they capture a specific key event.
+// exists mainly for documentation purpose
 type eventCapturer interface {
 	// CapturesKeyEvent returns true if the implementation captures the given key event.
 	// When true is returned, the application typically should consider the event "consumed",
@@ -155,7 +156,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Interrupt
 		}
-		return m, msgToCmd(alertDialogMsg{header: msg.errHeader, body: msg.errStr, alertDuration: 10 * time.Second})
+		return m, msgToCmd(alertDialogMsg{header: msg.errHeader, body: msg.errStr})
 	}
 
 	return m, m.handleChildModelUpdates(msg)

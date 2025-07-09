@@ -75,7 +75,9 @@ func (bt *BackgroundTask) RunAndBlock(fn func(shutdownCtx context.Context)) {
 
 // Shutdown cancels all running tasks and waits for them to complete.
 // Returns nil if all tasks complete before the timeout, otherwise returns an error.
-// timeout: maximum duration to wait for all tasks to complete.
+//
+// Parameters:
+//   - timeout: the maximum duration to wait for all tasks to complete.
 func (bt *BackgroundTask) Shutdown(timeout time.Duration) error {
 	bt.cancel()
 	wait := make(chan struct{})

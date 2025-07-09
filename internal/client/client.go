@@ -108,7 +108,7 @@ func (dt *DownloadTracker) Write(p []byte) (n int, err error) {
 func (dt *DownloadTracker) Close() error {
 	dt.cancel()
 	// if total size is set, send the last progress update
-	// or else it may be a failed resume attempt
+	// or else it may be a failed resume attempt, if t is not set
 	if dt.t.Load() > 0 {
 		dt.trySend(true) // send the last progress update
 	}
@@ -120,7 +120,7 @@ func (dt *DownloadTracker) Close() error {
 	// if file is fully downloaded
 	total := dt.t.Load()
 	if dt.d.Load() == total && total > 0 {
-		// if the file is fully downloaded, rename it to remove the incomplete download key
+		// rename it to remove the incomplete download key
 		final := strings.TrimSuffix(dt.f.Name(), IncompleteDownloadKey)
 		// check if the final file already exists, then generate a unique name
 		if _, err := os.Stat(final); err == nil { // is nil
@@ -132,7 +132,6 @@ func (dt *DownloadTracker) Close() error {
 		}
 		dt.finalName = final
 	}
-
 	return nil
 }
 
@@ -169,7 +168,7 @@ func (dt *DownloadTracker) trySend(force bool) bool {
 	case dt.pch <- p:
 		return true
 	case <-dt.ctx.Done():
-		return false // context is cancelled, do not send
+		return false
 	default:
 		return false
 	}
