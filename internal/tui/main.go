@@ -128,7 +128,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, msgToCmd(spaceFocusSwitchMsg{})
 
-			// centralizing the quit logic
+			// shutdown works as follows:
+			// there is a global state - shutdownOk []bool (bool slice)
+			// after ctrl+c this gives an opportunity to each model to handle the shutdown (as seen in the ctrl+c case below)
+			// each command needs to do its cleanup, show any alert that it needs, and append a true to the shutdownOk slice
+			//  each command that is called in this block (specific to a model) should return a tea.KeyCtrlC command,
+			// that is, it should not consume the ctrl+c key event
+			// when the key event comes back to the main model, it calls the next conditional statement till it shuts down.
 		case "ctrl+c":
 			if m.localSpace.send.isServing {
 				return m, m.localSpace.send.shutdownServer(true)

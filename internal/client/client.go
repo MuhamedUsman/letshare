@@ -327,13 +327,7 @@ func (c *Client) StopServer(instance string) (int, error) {
 		return -1, fmt.Errorf("stopping server: %v", err)
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	var response struct {
-		Status string `json:"status"`
-	}
-	if err = json.Unmarshal(b, &response); err != nil {
-		return -1, fmt.Errorf("parsing server response while stopping: %v", err)
-	}
+
 	if resp.StatusCode != http.StatusAccepted &&
 		resp.StatusCode != http.StatusForbidden &&
 		resp.StatusCode != http.StatusConflict {

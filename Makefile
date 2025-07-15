@@ -13,9 +13,9 @@ help:
 # DEVELOPMENT
 # ==================================================================================== #
 
-## build/debug: build with specific flags that allows delve debugging on remote port
+## build/debug: build with specific flags that allows delve debugging on remote port (GOLAND specific)
 .PHONY: build/debug
 build/debug:
 	CGOENABLED=1; \
-	go build -gcflags "all=-N -l" -o ./bin ./cmd/letshare; \
+	go build -gcflags "all=-N -l" -o ./bin ./letshare; \
 	dlv --listen=:2345 --headless=true --api-version=2 --accept-multiclient exec ./bin/letshare.exe

@@ -28,3 +28,6 @@ go.work.sum
 .idea
 bin
 node_modules
+
+# Added by goreleaser init:
+dist/
