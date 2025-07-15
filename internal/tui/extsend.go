@@ -49,7 +49,7 @@ type extSendModel struct {
 	lh                      *logHandler
 	activeDownCh            <-chan int
 	titleStyle              lipgloss.Style
-	activeDowns             int
+	activeCons              int
 	disableKeymap, showHelp bool
 }
 
@@ -102,7 +102,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 		return m, m.trackLogs()
 
 	case activeDownsMsg:
-		m.activeDowns = int(msg)
+		m.activeCons = int(msg)
 		return m, m.trackActiveDowns()
 
 	case instanceShutdownMsg:
@@ -121,7 +121,7 @@ func (m extSendModel) Update(msg tea.Msg) (extSendModel, tea.Cmd) {
 
 	case timer.TimeoutMsg:
 		if msg.ID == m.escTimer.ID() {
-			m.activeDowns = 0
+			m.activeCons = 0
 			return m, msgToCmd(serverLogsTimeoutMsg{}) // extensionSpaceModel handles this & switch back to extDirNav
 		}
 	}
@@ -146,7 +146,7 @@ func (m extSendModel) renderTitle() string {
 }
 
 func (m extSendModel) renderStatusBar() string {
-	s := fmt.Sprintf("Active Downloads: %d", m.activeDowns)
+	s := fmt.Sprintf("Active Download Connections: %d", m.activeCons)
 	if m.escTimer.Running() {
 		s = fmt.Sprintf("Escaping in %.1f...", m.escTimer.Timeout.Seconds())
 	}

@@ -26,8 +26,5 @@ go.work.sum
 
 # Project Dir
 .idea
-tmp
 bin
-
-# Project Files
-.air.toml
+node_modules

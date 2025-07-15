@@ -2,6 +2,7 @@ package mdns
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -17,25 +18,19 @@ func TestMDNSDiscoveryAndPublication(t *testing.T) {
 
 	// Start publishing in background
 	go func() {
-		if err := m.Publish(ctx, instance, hostname, username, port); err != nil {
-			t.Error(err)
-			return
-		}
+		err := m.Publish(ctx, instance, hostname, username, port)
+		assert.NoError(t, err, "Failed to publish mDNS service")
 	}()
-
 	go func() {
-		if err := m.Browse(ctx); err != nil {
-			t.Error(err)
-			return
-		}
+		err := m.Browse(ctx)
+		assert.NoError(t, err, "Failed to browse mDNS services")
 	}()
 
 	<-m.NotifyOnChange()
 
-	if entry, ok := m.Entries()[instance]; ok {
-		if !(entry.Hostname == hostname && entry.Port == port && entry.Owner == username) {
-			t.Errorf("Expected entry with Hostname: %s, Port: %d, Owner: %s, got Hostname: %s, Port: %d, Owner: %s",
-				hostname, port, username, entry.Hostname, entry.Port, entry.Owner)
-		}
-	}
+	entry, ok := m.Entries()[instance]
+	assert.True(t, ok, "Expected service entry to be present after publishing")
+	assert.Equal(t, entry.Hostname, hostname, "Expected hostname to match")
+	assert.Equal(t, entry.Port, port, "Expected port to match")
+	assert.Equal(t, entry.Owner, username, "Expected owner to match")
 }

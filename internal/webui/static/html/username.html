@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../../output.css">
+    <title>Letshare</title>
+  </head>
+
+<body class="overflow-hidden font-letshare recursive-normal">
+<div class="h-screen w-full relative">
+  <!-- Background Elements -->
+  <div class="absolute inset-0 bg-gradient-radial from-subdued-highlight/20 via-monokai/40 to-black"></div>
+  <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-highlight/8 rounded-full blur-3xl animate-float"></div>
+  <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-mid-highlight/6 rounded-full blur-3xl animate-float-delayed"></div>
+
+  <!-- Main Container -->
+  <div class="h-screen w-screen p-0 md:p-12 flex items-center justify-center">
+    <!-- Glass Card - Smaller for the form -->
+    <div class="w-full max-w-md bg-white/8 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="p-6 pb-4 border-b border-white/10 flex-shrink-0">
+        <div class="flex items-center justify-center">
+          <h1 class="text-3xl recursive-header text-highlight tracking-wide select-none">Letshare</h1>
+        </div>
+      </div>
+
+      <!-- Form Content -->
+      <div class="p-6">
+        <form action="/register" method="post" class="space-y-6">
+          <div class="space-y-2">
+            <label for="username" class="block text-white/90 text-sm recursive-normal">Username</label>
+            <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    required
+                    autocomplete="username"
+                    placeholder="Enter your username"
+                    class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-highlight focus:border-transparent transition-colors recursive-normal"
+            >
+          </div>
+
+          <button
+                  type="submit"
+                  class="w-full bg-highlight/90 text-black py-3 px-4 rounded-lg recursive-semibold transition-all hover:bg-highlight focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-subdued-highlight"
+          >
+            Done
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
@@ -14,37 +13,26 @@ import (
 	"time"
 )
 
-func init() {
-	flag.Parse()
-}
-
 func main() {
-	f, err := tea.LogToFile("Letshare.log", "Letshare")
-	if err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	h := tint.NewHandler(f, &tint.Options{TimeFormat: time.Kitchen, NoColor: true})
-	slog.SetDefault(slog.New(h))
+	h := tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: time.Kitchen, NoColor: true})
+	sog := slog.New(h)
 
 	bgtask.Get().Run(func(shutdownCtx context.Context) {
-		if err = mdns.Get().Browse(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := mdns.Get().Browse(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
 			println()
-			slog.Error("Error discovering mDNS services", "err", err)
+			sog.Error("Error discovering mDNS services", "err", err)
 			os.Exit(1)
 		}
 	})
 
 	finalErrCh := make(chan error, 1) // writer wil close
-	_, err = tea.NewProgram(
+	_, err := tea.NewProgram(
 		tui.InitialMainModel(finalErrCh),
 		tea.WithAltScreen(),
 		tea.WithoutBracketedPaste(),
 	).Run()
 	if err != nil {
 		err = <-finalErrCh
-		slog.Error(err.Error())
+		sog.Error(err.Error())
 	}
 }

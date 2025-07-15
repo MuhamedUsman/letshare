@@ -12,6 +12,7 @@ import (
 	"github.com/mattn/go-runewidth"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -29,7 +30,7 @@ type fileIndexes struct {
 
 type extReceiveModel struct {
 	client                                 *client.Client
-	instance                               string
+	instance, fetchFailedStatus            string
 	extFileIndexTable                      table.Model
 	filter                                 textinput.Model
 	titleStyle                             lipgloss.Style
@@ -178,8 +179,15 @@ func (m extReceiveModel) Update(msg tea.Msg) (extReceiveModel, tea.Cmd) {
 	case fileIndexesMsg:
 		m.isFetching = false
 		m.files.indexes = msg
+		m.fetchFailedStatus = ""
 		m.populateTable(m.files.indexes)
 		m.extFileIndexTable.GotoTop()
+
+	case fetchFileFailedMsg:
+		m.isFetching = false
+		m.fetchFailedStatus = msg.status
+		m.clearFiles()
+		return m, tea.Batch(msgToCmd(msg.errMsg))
 	}
 
 	if m.filterState == filtering {
@@ -339,6 +347,9 @@ func (m extReceiveModel) getStatus() string {
 	if m.isFetching {
 		return runewidth.Truncate(status, largeContainerW()-4, "…")
 	}
+	if m.fetchFailedStatus != "" {
+		return runewidth.Truncate(m.fetchFailedStatus, largeContainerW()-4, "…")
+	}
 	// unfiltered
 	status = fmt.Sprintf("%d Total", len(m.files.indexes))
 	selectCount := m.getSelectionCount()
@@ -452,16 +463,11 @@ func customExtReceiveTableHelp(show bool) *lipTable.Table {
 		rows = [][]string{{"?", "help"}}
 	} else {
 		rows = [][]string{
-			{"shift+↓/ctrl+↓", "make selection"},
-			{"shift+↑/ctrl+↑", "undo selection"},
-			{"ctrl+s", "download selected files"},
-			{"ctrl+a/z", "select/deselect all"},
 			{"enter", "select/deselect at cursor"},
+			{"shift+↓/↑", "make/undo selection"},
+			{"ctrl+a", "select/deselect all"},
+			{"ctrl+s", "send selected files"},
 			{"esc", "exit filtering"},
-			{"b/pgup", "page up"},
-			{"f/space", "page down"},
-			{"g/home", "go to start"},
-			{"G/end", "go to end"},
 			{"/", "filter"},
 			{"?", "hide help"},
 		}
@@ -490,21 +496,34 @@ func (m *extReceiveModel) clearFiles() {
 func (m extReceiveModel) fetchFileIndexes() tea.Cmd {
 	return func() tea.Msg {
 		fInfos, status, err := m.client.IndexFiles(m.instance)
+		if err != nil {
+			return errMsg{err: err, fatal: true}
+		}
 		if status == http.StatusRequestTimeout {
-			return errMsg{
-				errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
-				errStr:    "Fetching files, the server instance is not responding, it might be down.",
-				fatal:     false,
+			return fetchFileFailedMsg{
+				status: "Fetching files failed, you may want to retry…",
+				errMsg: errMsg{
+					errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
+					errStr:    "Fetching files, the server instance is not responding, it might be down.",
+					fatal:     false,
+				},
 			}
 		} else if status != http.StatusOK {
 			// TODO: it failed now update the status bar to show error and set the receiveModel fetchInitiated to false
-			return errMsg{
-				errHeader: strings.ToUpper(http.StatusText(status)),
-				errStr:    err.Error(),
+			h := strings.ToUpper(http.StatusText(status))
+			if h == "" {
+				h = "UNKNOWN ERROR"
 			}
-		}
-		if err != nil {
-			return errMsg{err: err, fatal: true}
+			return fetchFileFailedMsg{
+				status: "Fetching files failed, you may want to retry…",
+				errMsg: errMsg{
+					errHeader: h,
+					errStr: fmt.Sprintf(
+						"server returned status code %q while indexing directory.",
+						strconv.Itoa(status),
+					),
+				},
+			}
 		}
 
 		indexes := make([]fileIndex, len(fInfos))

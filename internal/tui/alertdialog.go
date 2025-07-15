@@ -40,8 +40,7 @@ type alertDialogModel struct {
 	// and releases it accordingly
 	prevFocus focusSpace
 	// active signals this model's view must be rendered
-	active        bool
-	disableKeymap bool
+	active, disableKeymap bool
 	// functions to all on appropriate buttons
 	positiveFunc, negativeFunc, escFunc func() tea.Cmd
 }
@@ -167,7 +166,9 @@ func (m alertDialogModel) View() string {
 
 	var view string
 	if !m.isTimerAlert() {
-		btns := lipgloss.JoinHorizontal(lipgloss.Center, negStyle.Render(m.negativeBtnTxt), posStyle.Render(m.positiveBtnTxt))
+		negBtn := negStyle.Render(m.negativeBtnTxt)
+		posBtn := posStyle.Render(m.positiveBtnTxt)
+		btns := lipgloss.JoinHorizontal(lipgloss.Center, negBtn, posBtn)
 		btns = lipgloss.PlaceHorizontal(c.GetWidth()-alertDialogBtnStyle.GetHorizontalPadding(), lipgloss.Right, btns)
 		view = lipgloss.JoinVertical(lipgloss.Left, h, b, btns)
 	} else {

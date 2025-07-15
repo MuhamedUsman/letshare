@@ -137,6 +137,11 @@ type fetchFileIndexesMsg string // string hold the instance name
 
 type fileIndexesMsg []fileIndex
 
+type fetchFileFailedMsg struct {
+	status string
+	errMsg errMsg
+}
+
 func msgToCmd[t tea.Msg](msg t) tea.Cmd {
 	return func() tea.Msg {
 		return msg

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,6 +63,22 @@ func (*Server) readJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		return errors.New("body must only contain a single JSON value")
+	}
+	return nil
+}
+
+func (s *Server) render(w http.ResponseWriter, status int, page string, data any) error {
+	ts := getTemplate()
+	if ts == nil {
+		return fmt.Errorf("template doesnot exist %q", page)
+	}
+	b := new(bytes.Buffer)
+	if err := ts.ExecuteTemplate(b, "fileIndexes", data); err != nil {
+		return err
+	}
+	w.WriteHeader(status)
+	if _, err := b.WriteTo(w); err != nil {
+		return fmt.Errorf("writing response: %w", err)
 	}
 	return nil
 }

@@ -309,14 +309,19 @@ func (m sendModel) renderFormTitle() string {
 func (m sendModel) renderInfoText() string {
 	baseStyle := lipgloss.NewStyle().Foreground(midHighlightColor).Align(lipgloss.Center)
 	sb := new(strings.Builder)
-
+	var port string
+	if server.GetPort() == server.TestHTTPPort {
+		port = fmt.Sprint(":", server.TestHTTPPort)
+	}
 	switch m.btnIdx {
 	case defaultInstance:
-		sb.WriteString(baseStyle.Render("Public default address, “http://letshare.local”"))
+		s := fmt.Sprintf("Public default address, “http://letshare.local%s”", port)
+		sb.WriteString(baseStyle.Render(s))
 	case customInstance:
 		s := baseStyle.Render("For privacy, a custom address, to update hit “ctrl+p”")
 		if m.isSelected && m.btnIdx == customInstance {
-			s = baseStyle.Render("Private custom address, “http://" + m.customInstance + ".local”")
+			s = fmt.Sprintf("Private custom address, “http://%s.local%s”", m.customInstance, port)
+			s = baseStyle.Render()
 		}
 		sb.WriteString(s)
 	case noInstance:
@@ -504,7 +509,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 		uname := m.getConfig().Personal.Username
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			hostname := fmt.Sprintf("%s.%s", instance, mdns.Domain)
-			err = m.mdns.Publish(m.server.StopCtx, instance, hostname, uname, 80)
+			err = m.mdns.Publish(m.server.StopCtx, instance, hostname, uname, uint16(server.GetPort()))
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return errMsg{err: err, fatal: true}
@@ -522,7 +527,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 				return alertDialogMsg{
 					header: "GRACEFUL SHUTDOWN!",
 					body: fmt.Sprintf(
-						"Shutting down server, “%d” active downloads will be served, but no new requests will be accepted.",
+						"Shutting down server, “%d” active download connections will be served, but no new requests will be accepted.",
 						m.server.ActiveDowns,
 					),
 				}

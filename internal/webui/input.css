@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+@theme {
+    --color-highlight: oklch(0.953 0.174 115.155);
+    --color-faint-highlight: oklch(0.975 0.102 113.473);
+    --color-mid-highlight: oklch(0.705 0.123 115.483);
+    --color-subdued-highlight: oklch(0.435 0.066 117.711);
+    --color-red: oklch(0.66 0.218 30.392);
+    --color-yellow: oklch(0.832 0.159 82.987);
+    --color-black: oklch(0.277 0 89.876);
+    --color-white: oklch(0.956 0.055 96.155);
+    --color-gray: oklch(0.387 0 89.876);
+    --color-monokai: oklch(0.274 0.011 114.803);
+
+    /* Recursive Variable Font Axis Settings */
+    --mono: "MONO" 0;      /* Sans (natural-width) */
+    --casl: "CASL" 1;      /* Maximum casual style */
+    --wght: "wght" 300;    /* Light weight */
+    --slnt: "slnt" -5;     /* Maximum slant (-15 degrees) */
+    --crsv: "CRSV" 1;      /* Always cursive mode */
+
+    --font-letshare: 'Recursive', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@font-face {
+    font-family: 'Recursive';
+    src: url('/static/font/Recursive_VF_1.085.woff2') format('woff2');
+    font-weight: 300 1000;
+    font-display: swap;
+    font-style: normal;
+}
+
+/* Text style utilities for Recursive font variations */
+.recursive-normal {
+    font-family: var(--font-letshare), sans-serif;
+    font-variation-settings: var(--mono), var(--casl), "wght" 350, var(--slnt), var(--crsv);
+}
+
+.recursive-sub-header {
+    font-family: var(--font-letshare), sans-serif;
+    font-variation-settings: var(--mono), var(--casl), "wght" 350, "slnt" -10, var(--crsv);
+}
+
+.recursive-header {
+    font-family: var(--font-letshare), sans-serif;
+    font-variation-settings: var(--mono), var(--casl), "wght" 400, "slnt" -15, var(--crsv);
+}
+
+/* New bold style for file type */
+.recursive-semibold {
+    font-family: var(--font-letshare), sans-serif;
+    font-variation-settings: var(--mono), var(--casl), "wght" 500, var(--slnt), var(--crsv);
+}
+
+/* Custom Tailwind Extensions */
+@layer utilities {
+    .bg-gradient-radial {
+        background: radial-gradient(ellipse 140% 140% at center, var(--color-subdued-highlight) 0%, var(--color-monokai) 40%, var(--color-black) 100%);
+    }
+
+    .text-highlight {
+        color: var(--color-highlight);
+    }
+
+    .bg-highlight {
+        background-color: var(--color-highlight);
+    }
+
+    .bg-mid-highlight {
+        background-color: var(--color-mid-highlight);
+    }
+
+    .bg-subdued-highlight {
+        background-color: var(--color-subdued-highlight);
+    }
+
+    .bg-monokai {
+        background-color: var(--color-monokai);
+    }
+}
+
+/* Responsive File Card - Works for both desktop and mobile */
+.file-card {
+    @apply bg-white/6 backdrop-blur-sm border border-white/10 rounded-xl p-4 transition-all duration-300 cursor-pointer;
+    @apply hover:bg-white/12 hover:border-white/20 hover:-translate-y-1 hover:shadow-lg;
+    @apply md:flex-col md:justify-between md:h-[140px];
+    display: flex;
+    width: 100%;
+}
+
+/* For mobile (row layout) */
+@media (max-width: 767px) {
+    .file-card {
+        @apply flex-row items-center justify-between h-16 rounded-lg p-3;
+    }
+}
+
+.file-name {
+    @apply text-white/90 text-sm font-light overflow-hidden;
+    @apply md:flex-1 md:items-start md:mb-3;
+    @apply flex-1 mr-3;
+}
+
+.file-text {
+    @apply block md:line-clamp-3;
+
+    /* For mobile */
+    @media (max-width: 767px) {
+        @apply truncate;
+    }
+
+    /* For desktop */
+    @media (min-width: 768px) {
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        word-break: break-word;
+        hyphens: auto;
+    }
+}
+
+.file-meta {
+    @apply flex items-center;
+    @apply md:justify-between md:w-full md:mt-auto;
+    @apply flex-shrink-0;
+}
+
+/* Updated mobile tag style with bullet separator */
+@media (max-width: 767px) {
+    .file-meta {
+        @apply flex-row items-center py-1 px-2 rounded-md bg-highlight whitespace-nowrap;
+    }
+}
+
+.file-type {
+    @apply text-subdued-highlight text-xs;
+    @apply md:px-2 md:py-1 md:rounded-md md:bg-highlight;
+}
+
+.file-size {
+    @apply text-xs;
+    @apply md:text-white/70;
+}
+
+.file-card:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-highlight);
+}
+
+/* Mobile-specific separator bullet point */
+.meta-separator {
+    @apply hidden;
+}
+
+@media (max-width: 767px) {
+    .meta-separator {
+        @apply block text-black mx-1;
+    }
+
+    .file-type, .file-size {
+        @apply text-black;
+        font-variation-settings: var(--mono), var(--casl), "wght" 500, var(--slnt), var(--crsv);
+    }
+
+    .file-card:focus {
+        box-shadow: 0 0 0 1px var(--color-highlight);
+    }
+}
+
+/* Scrollbar Styling */
+.scrollbar-thin {
+    scrollbar-width: thin;
+}
+
+.scrollbar-track-transparent {
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

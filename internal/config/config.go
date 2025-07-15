@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"io"
@@ -13,24 +12,12 @@ import (
 
 const (
 	appConfDir  = ".letshare"
-	testConfDir = ".test"
 	appConfFile = "config.toml"
 )
 
 var (
 	ErrNoConfig = errors.New("config must be loaded")
 )
-
-var TestFlag bool
-
-func init() {
-	flag.BoolVar(&TestFlag,
-		"test",
-		false,
-		"Use to run app with separate user config file, useful for testing purposes",
-	)
-	// parsed in main package
-}
 
 type PersonalConfig struct {
 	Username string `toml:"username"`
@@ -138,6 +125,9 @@ func defaultConfig() (Config, error) {
 		return Config{}, fmt.Errorf("hostname look-up: %w", err)
 	}
 	downPath := filepath.Join(homeDir, "Downloads")
+	if err = os.MkdirAll(downPath, 0o750); err != nil {
+		return Config{}, fmt.Errorf("creating download folder: %w", err)
+	}
 	downPath = filepath.ToSlash(downPath)
 	cfg := Config{
 		Personal: PersonalConfig{
@@ -158,38 +148,25 @@ func defaultConfig() (Config, error) {
 }
 
 func getUserConfigFile() (*os.File, error) {
-	d, err := os.UserConfigDir()
+	cfgPath, err := GetDir()
 	if err != nil {
-		return nil, fmt.Errorf("user config directory look-up: %w", err)
+		return nil, err
 	}
-
-	path := filepath.Join(d, appConfDir, appConfFile)
-	if TestFlag {
-		path = filepath.Join(d, testConfDir, appConfFile)
-	}
+	cfgPath = filepath.Join(cfgPath, appConfFile)
 	var f *os.File
-	if f, err = os.Open(path); err != nil {
+	if f, err = os.Open(cfgPath); err != nil {
 		return nil, fmt.Errorf("opening app config file: %w", err)
 	}
 	return f, nil
 }
 
 func createConfigFile() (*os.File, error) {
-	d, err := os.UserConfigDir()
+	cfgPath, err := GetDir()
 	if err != nil {
-		return nil, fmt.Errorf("user config directory look-up: %v", err)
+		return nil, err
 	}
-
-	path := filepath.Join(d, appConfDir)
-	if TestFlag {
-		path = filepath.Join(d, testConfDir)
-	}
-	if err = os.MkdirAll(path, 0o700); err != nil {
-		return nil, fmt.Errorf("creating app config directory: %w", err)
-	}
-
-	path = filepath.Join(path, appConfFile)
-	f, err := os.Create(path)
+	cfgPath = filepath.Join(cfgPath, appConfFile)
+	f, err := os.Create(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("creating app config file: %w", err)
 	}

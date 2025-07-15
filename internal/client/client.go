@@ -183,10 +183,14 @@ func Get() *Client {
 	once.Do(func() {
 		var proto http.Protocols
 		proto.SetUnencryptedHTTP2(true)
+		proto.SetHTTP1(true)
 		client = &Client{
 			mdns: mdns.Get(),
 			c: http.Client{Transport: &http.Transport{
+				Proxy:              nil,
 				DisableCompression: true,
+				ForceAttemptHTTP2:  false,
+				HTTP2:              nil,
 				Protocols:          &proto,
 			}},
 		}
@@ -206,7 +210,7 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 	var urlErr *url.Error
 	if err != nil {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
-			return nil, http.StatusRequestTimeout, fmt.Errorf("indexing files: request timed out")
+			return nil, http.StatusRequestTimeout, nil
 		}
 		return nil, -1, fmt.Errorf("indexing files: %v", err)
 	}
@@ -214,12 +218,12 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, resp.StatusCode, fmt.Errorf("server returned status %d while indexing directory", resp.StatusCode)
+		return nil, resp.StatusCode, nil
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, -1, fmt.Errorf("reading directory index response: %v", err)
+		return nil, -1, fmt.Errorf("reading directory index response: %v", unwrapErr(err))
 	}
 
 	var r map[string][]*domain.FileInfo
@@ -356,6 +360,7 @@ func (c *Client) newRequest(ctx context.Context, instance, method, path string, 
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("X-Requested-By", uname)
+	req.Header.Set("Accept", "application/json")
 	return req, nil
 }
 

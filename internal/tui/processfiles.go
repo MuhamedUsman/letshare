@@ -165,10 +165,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 	case processSelectionsMsg:
 		cfg, err := config.Get()
 		if errors.Is(err, config.ErrNoConfig) {
-			cfg, err = config.Load()
-		}
-		if err != nil {
-			return m, msgToCmd(errMsg{err: err, fatal: true})
+			cfg, _ = config.Load()
 		}
 
 		if !cfg.Share.ZipFiles && msg.dirs == 0 {

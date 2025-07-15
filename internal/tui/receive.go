@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
+	"github.com/MuhamedUsman/letshare/internal/server"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -128,6 +130,8 @@ func (m receiveModel) Update(msg tea.Msg) (receiveModel, tea.Cmd) {
 		}
 		return m, m.trackInstanceAvailabilityOnChange()
 
+	case fetchFileFailedMsg:
+		m.fetchedOnce = false
 	}
 
 	return m, m.handleInstanceInputUpdate(msg)
@@ -243,6 +247,10 @@ func (m receiveModel) renderInstanceConnectionInfo() string {
 	ip = "http://" + ip
 	qr := m.generateQR(ip)
 	qr = baseStyle.Render(qr)
+
+	if server.GetPort() == server.TestHTTPPort {
+		ip = fmt.Sprintf("%s:%d", ip, server.TestHTTPPort)
+	}
 	ip = baseStyle.Underline(true).Italic(true).Render(ip)
 
 	titleH := lipgloss.Height(m.renderTitle())

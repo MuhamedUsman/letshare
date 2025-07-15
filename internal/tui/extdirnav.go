@@ -351,7 +351,7 @@ func (extDirNavModel) readDir(path string) tea.Cmd {
 			// name without ext
 			name := strings.TrimSuffix(entry.Name(), filetype)
 			filetype = strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
-			// for indexes like .gitignore
+			// for files like .gitignore
 			if strings.Count(entry.Name(), ".") == 1 &&
 				strings.HasPrefix(entry.Name(), ".") {
 				name = entry.Name()
@@ -539,7 +539,7 @@ func (m *extDirNavModel) confirmDiscardSelOnNewExtDir(msg extendDirMsg) tea.Cmd 
 }
 
 func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
-	// when filtering, we will not grant an extension switch
+	// when filtering, we will not allow discarding
 	if m.filterState != unfiltered {
 		return nil
 	}
@@ -551,9 +551,7 @@ func (m *extDirNavModel) confirmDiacardSel(space extChild) tea.Cmd {
 	header := "ARE YOU SURE?"
 	body := "All the selections will be lost..."
 	positiveFunc := func() tea.Cmd {
-		m.allSelected = false
-		m.selectAll(m.allSelected)
-		return cmd
+		return tea.Batch(msgToCmd(resetExtDirTableSelectionsMsg{}), cmd)
 	}
 	return msgToCmd(alertDialogMsg{
 		header:         header,

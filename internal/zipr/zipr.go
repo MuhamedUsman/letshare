@@ -73,7 +73,6 @@ func New(ctx context.Context, progressCh chan<- uint64, logCh chan<- string, alg
 // All zipping operations run concurrently using a worker pool for maximum efficiency.
 //
 // Parameters:
-//   - ctx: Context for cancelling the operation - if cancelled, any partially created archive will be deleted
 //   - path: The directory where the zip archives will be created
 //   - root: The base path containing the directories to be zipped
 //   - dirs: List of directory names within the root to zip (each becomes a separate archive)
@@ -85,7 +84,7 @@ func New(ctx context.Context, progressCh chan<- uint64, logCh chan<- string, alg
 // Example:
 //
 //	// Zip multiple directories concurrently
-//	paths, err := zipper.CreateArchives(context.Background(), "/tmp", "/home/user", "documents", "pictures", "music")
+//	paths, err := zipper.CreateArchives("/tmp", "/home/user", "documents", "pictures", "music")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -328,7 +327,7 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	n, err = pr.r.Read(p)
 	pr.read.Add(uint64(n))
 	pr.lrMu.RLock()
-	isReportTime := time.Since(pr.lastRead) > 500*time.Millisecond
+	isReportTime := time.Since(pr.lastRead) > 250*time.Millisecond
 	pr.lrMu.RUnlock()
 	if isReportTime {
 		_ = trySend(pr.progressCh, pr.read.Load()) // report progress
