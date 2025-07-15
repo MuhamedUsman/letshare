@@ -509,7 +509,6 @@ func (m extReceiveModel) fetchFileIndexes() tea.Cmd {
 				},
 			}
 		} else if status != http.StatusOK {
-			// TODO: it failed now update the status bar to show error and set the receiveModel fetchInitiated to false
 			h := strings.ToUpper(http.StatusText(status))
 			if h == "" {
 				h = "UNKNOWN ERROR"
