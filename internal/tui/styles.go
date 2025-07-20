@@ -6,20 +6,15 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
-var ( // color scheme from https://github.com/morhetz/gruvbox
-
+var (
 	bgColor               = lipgloss.AdaptiveColor{Light: "#fbf1c7", Dark: "#282828"}
 	fgColor               = lipgloss.AdaptiveColor{Light: "#282828", Dark: "#fbf1c7"}
 	redColor              = lipgloss.AdaptiveColor{Light: "#9d0006", Dark: "#fb4934"}
-	greenColor            = lipgloss.AdaptiveColor{Light: "#5f7a3d", Dark: "#D7FF87"}
 	yellowColor           = lipgloss.AdaptiveColor{Light: "#b57614", Dark: "#fabd2f"}
-	blueColor             = lipgloss.AdaptiveColor{Light: "#076678", Dark: "#458588"}
-	purpleColor           = lipgloss.AdaptiveColor{Light: "#8f3f71", Dark: "#b16286"}
 	highlightColor        = lipgloss.AdaptiveColor{Light: "#4e562a", Dark: "#ECFD65"}
 	midHighlightColor     = lipgloss.AdaptiveColor{Light: "#9DA947", Dark: "#9DA947"}
 	subduedHighlightColor = lipgloss.AdaptiveColor{Light: "#ECFD65", Dark: "#4e562a"}
 	grayColor             = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#444444"}
-	orangeColor           = lipgloss.AdaptiveColor{Light: "#af3a03", Dark: "#d65d0e"}
 
 	generateGradient = func(base, target lipgloss.AdaptiveColor, steps int) []lipgloss.AdaptiveColor {
 		bLight, _ := colorful.Hex(base.Light)

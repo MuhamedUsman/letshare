@@ -24,8 +24,6 @@ type extensionSpaceModel struct {
 	preference                   preferenceModel
 	download                     downloadModel
 	titleStyle                   lipgloss.Style
-	extendedSpace                focusSpace
-	dirToExtend                  string
 	activeChild, prevActiveChild extChild
 	prevFocus                    focusSpace
 	disableKeymap, showHelp      bool

@@ -63,14 +63,11 @@ type eventCapturer interface {
 type FinalErrCh chan<- error
 
 type MainModel struct {
-	localSpace     localSpaceModel
-	extensionSpace extensionSpaceModel
-	remoteSpace    remoteSpaceModel
-	alertDialog    alertDialogModel
-	finalErrCh     FinalErrCh
-	// number of models that have been signaled for graceful shutdown
-	// see ctrl+c case in MainModel.Update for how it works
-	shutdownCount      int
+	localSpace         localSpaceModel
+	extensionSpace     extensionSpaceModel
+	remoteSpace        remoteSpaceModel
+	alertDialog        alertDialogModel
+	finalErrCh         FinalErrCh
 	isFinalErrChClosed bool // true if finalErrCh is already closed
 }
 

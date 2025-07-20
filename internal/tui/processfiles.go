@@ -99,12 +99,12 @@ func (z *zipTracker) setLogsLength(l int) {
 }
 
 type processFilesModel struct {
-	selections             *selections
-	zipTracker             *zipTracker
-	progress               progress.Model
-	titleStyle             lipgloss.Style
-	showProgress, showHelp bool
-	disableKeymap          bool
+	selections    *selections
+	zipTracker    *zipTracker
+	progress      progress.Model
+	titleStyle    lipgloss.Style
+	showHelp      bool
+	disableKeymap bool
 }
 
 func initialProcessFilesModel() processFilesModel {

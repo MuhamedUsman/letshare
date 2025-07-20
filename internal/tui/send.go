@@ -74,7 +74,6 @@ type sendModel struct {
 	files                               []string
 	customInstance                      string
 	titleStyle                          lipgloss.Style
-	txtInput                            textinput.Model
 	btnIdx, selected                    instanceBtn
 	instanceState                       requiredInstanceState
 	isSelected, showHelp, disableKeymap bool
@@ -246,12 +245,6 @@ func (m sendModel) View() string {
 	return lipgloss.JoinVertical(lipgloss.Top, views...)
 }
 
-func (m *sendModel) handleUpdate(msg tea.Msg) tea.Cmd {
-	var cmds [1]tea.Cmd
-	m.txtInput, cmds[0] = m.txtInput.Update(msg)
-	return tea.Batch(cmds[:]...)
-}
-
 func (m *sendModel) updateKeymap(disable bool) {
 	m.disableKeymap = disable
 }
@@ -272,17 +265,6 @@ func (m sendModel) renderTitle() string {
 	subW := smallContainerW() - m.titleStyle.GetHorizontalFrameSize() - 2
 	t := runewidth.Truncate("Local Space", subW, "…")
 	return m.titleStyle.Render(t)
-}
-
-func (m sendModel) renderStatusBar() string {
-	s := "Hello"
-	style := lipgloss.NewStyle().
-		Foreground(highlightColor).
-		Faint(true).
-		Margin(1, 1, 0, 2).
-		Italic(true)
-	s = runewidth.Truncate(s, smallContainerW()-style.GetHorizontalFrameSize()-1, "…")
-	return style.Render(s)
 }
 
 func (m sendModel) renderInstanceSelectionForm() string {

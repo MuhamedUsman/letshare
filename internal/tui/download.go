@@ -91,9 +91,8 @@ type fileDownload struct {
 	// to indicate completion, pause, cancel
 	*client.DownloadTracker
 
-	// these fields are not protected by the mutex
-	progCh chan client.Progress
-	prog   client.Progress
+	// this field is not protected by the mutex
+	prog client.Progress
 }
 
 type displayDownload struct {

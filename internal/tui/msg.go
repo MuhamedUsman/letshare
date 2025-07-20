@@ -21,9 +21,6 @@ type errMsg struct {
 
 type fsErrMsg string
 
-// paired with MainModel.Update to signal to main model that user has aborted the shutdown
-type abortShutdownMsg struct{}
-
 // spaceFocusSwitchMsg manages child switching using tab & shift+tab
 type spaceFocusSwitchMsg struct{}
 
@@ -138,12 +135,6 @@ type fetchFileFailedMsg struct {
 	status string
 	errMsg errMsg
 }
-
-// it holds cmds to be executed
-// for usage see downloadModel.startDownloads() method
-// it is used to avoid blocking UI, when cmds take longer to build,
-// as we have to acquire mutex
-type cmdGroupMsg []tea.Cmd
 
 func msgToCmd[t tea.Msg](msg t) tea.Cmd {
 	return func() tea.Msg {
