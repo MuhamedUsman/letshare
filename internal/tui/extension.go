@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	lipTable "github.com/charmbracelet/lipgloss/table"
 )
 
 type extChild = int
@@ -27,18 +28,18 @@ type extensionSpaceModel struct {
 	dirToExtend                  string
 	activeChild, prevActiveChild extChild
 	prevFocus                    focusSpace
-	disableKeymap                bool
+	disableKeymap, showHelp      bool
 }
 
 func initialExtensionSpaceModel() extensionSpaceModel {
+	ts := titleStyle.Background(highlightColor).Foreground(subduedHighlightColor)
 	return extensionSpaceModel{
-		extDirNav:     initialExtDirNavModel(),
-		extSend:       initialExtSendModel(),
-		extReceive:    initialExtReceiveModel(),
-		preference:    initialPreferenceModel(),
-		download:      initialDownloadModel(),
-		titleStyle:    titleStyle,
-		disableKeymap: true,
+		extDirNav:  initialExtDirNavModel(),
+		extSend:    initialExtSendModel(),
+		extReceive: initialExtReceiveModel(),
+		preference: initialPreferenceModel(),
+		download:   initialDownloadModel(),
+		titleStyle: ts,
 	}
 }
 
@@ -62,7 +63,13 @@ func (m extensionSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m extensionSpaceModel) Init() tea.Cmd {
-	return tea.Batch(m.extDirNav.Init(), m.preference.Init())
+	return tea.Batch(
+		m.extDirNav.Init(),
+		m.extSend.Init(),
+		m.extReceive.Init(),
+		m.preference.Init(),
+		m.download.Init(),
+	)
 }
 
 func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) {
@@ -76,6 +83,9 @@ func (m extensionSpaceModel) Update(msg tea.Msg) (extensionSpaceModel, tea.Cmd) 
 			return m, m.handleChildModelUpdate(msg)
 		}
 		switch msg.String() {
+
+		case "?":
+			m.showHelp = !m.showHelp
 
 		case "esc":
 			return m, msgToCmd(extensionChildSwitchMsg{child: home, focus: true})
@@ -135,10 +145,7 @@ func (m extensionSpaceModel) View() string {
 	var view string
 	switch m.activeChild {
 	case home:
-		title := m.titleStyle.Render("Home Space")
-		b := banner.Height(extContainerWorkableH() - lipgloss.Height(title)).Render()
-		b = lipgloss.JoinVertical(lipgloss.Center, title, b)
-		view = lipgloss.PlaceHorizontal(largeContainerW(), lipgloss.Center, b)
+		view = m.renderHomeView()
 	case extDirNav:
 		view = m.extDirNav.View()
 	case extSend:
@@ -153,6 +160,16 @@ func (m extensionSpaceModel) View() string {
 		view = ""
 	}
 	return largeContainerStyle.Width(largeContainerW()).Height(workableH()).Render(view)
+}
+
+func (m *extensionSpaceModel) renderHomeView() string {
+	title := m.titleStyle.Render("Home Space")
+	w := largeContainerW() - largeContainerStyle.GetHorizontalFrameSize()
+	help := customHomeHelp(m.showHelp).Width(w).Render()
+	h := extContainerWorkableH() - lipgloss.Height(title) - lipgloss.Height(help)
+	view := banner.Height(h).Render()
+	view = lipgloss.JoinVertical(lipgloss.Center, title, view, help)
+	return lipgloss.PlaceHorizontal(largeContainerW(), lipgloss.Center, view)
 }
 
 func (m *extensionSpaceModel) handleChildModelUpdate(msg tea.Msg) tea.Cmd {
@@ -184,4 +201,35 @@ func (m *extensionSpaceModel) updateKeymap(disable bool) {
 	m.extReceive.updateKeymap(disable || m.activeChild != extReceive)
 	m.preference.updateKeymap(disable || m.activeChild != preference)
 	m.download.updateKeymap(disable || m.activeChild != download)
+}
+
+func customHomeHelp(show bool) *lipTable.Table {
+	baseStyle := lipgloss.NewStyle()
+	var rows [][]string
+	if !show {
+		rows = [][]string{{"?", "help"}}
+	} else {
+		rows = [][]string{
+			{"tab/shift+tab", "shuffle through spaces"},
+			{"ctrl+p", "toggle preference space"},
+			{"ctrl+d", "toggle download space"},
+			{"esc", "hide extended space"},
+			{"ctrl+c", "exit letshare"},
+			{"?", "hide help"},
+		}
+	}
+	return lipTable.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderBottom(false).
+		Wrap(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			switch col {
+			case 0:
+				return baseStyle.Foreground(highlightColor).Align(lipgloss.Left).Faint(true) // key style
+			case 1:
+				return baseStyle.Foreground(subduedHighlightColor).Align(lipgloss.Right) // desc style
+			default:
+				return baseStyle
+			}
+		}).Rows(rows...)
 }

@@ -151,7 +151,7 @@ func (m processFilesModel) Update(msg tea.Msg) (processFilesModel, tea.Cmd) {
 		switch msg.String() {
 
 		case "Q", "q":
-			return m, m.confirmStopZipping(false)
+			return m, m.stopZipping(false)
 
 		case "?":
 			m.showHelp = !m.showHelp
@@ -430,26 +430,26 @@ func (m processFilesModel) trackLogs() tea.Cmd {
 	}
 }
 
-func (m *processFilesModel) confirmStopZipping(quit bool) tea.Cmd {
+func (m *processFilesModel) stopZipping(quitting bool) tea.Cmd {
+	cmd := func() tea.Msg {
+		m.zipTracker.state = canceling
+		m.zipTracker.cancel()
+		return nil
+	}
+	if quitting {
+		return cmd
+	}
+	// if not quitting, show an alert dialog to confirm stopping the zipping
 	selBtn := positive
 	header := "STOP ZIPPING?"
 	body := "Do you want to stop zipping the files, progress will be lost."
-	positiveFunc := func() tea.Cmd {
-		m.zipTracker.state = canceling
-		m.zipTracker.cancel()
-		if quit {
-			shutdownBgTasks()
-			return tea.Quit
-		}
-		return nil
-	}
 	return msgToCmd(alertDialogMsg{
 		header:         header,
 		body:           body,
 		cursor:         selBtn,
 		positiveBtnTxt: "YUP!",
 		negativeBtnTxt: "NOPE",
-		positiveFunc:   positiveFunc,
+		positiveFunc:   func() tea.Cmd { return cmd },
 	})
 }
 

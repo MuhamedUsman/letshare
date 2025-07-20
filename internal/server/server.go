@@ -116,6 +116,7 @@ func (s *Server) StartServer(filePaths ...string) error {
 	s.log.info("Starting server", "Addr", server.Addr)
 	errChan := s.listenAndShutdown(server)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		s.StopCtxCancel()
 		return err // caller has context
 	}
 	s.log.info("Shutting down server", "Addr", server.Addr)

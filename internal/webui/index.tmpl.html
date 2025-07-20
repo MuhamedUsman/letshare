@@ -31,7 +31,7 @@
             <div class="flex flex-col items-end select-none">
               <div class="text-white recursive-sub-header text-sm md:text-lg">{{.HostUsername}}</div>
               <div class="text-white/80 text-xs md:text-sm">
-                <span>{{.TotalFiles}} Files</span>
+                <span>{{.TotalFiles}} File{{if ne .TotalFiles 1}}s{{end}}</span>
                 <span class="max-xl:opacity-60">•</span>
                 <span>{{humanizeSize .TotalSize}}</span>
               </div>

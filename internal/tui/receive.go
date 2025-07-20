@@ -217,7 +217,7 @@ func (m receiveModel) renderInfoText() string {
 	s := "Instance currently unavailable, actively searching for it…"
 	if m.instanceAvailable {
 		style = style.UnsetFaint()
-		s = "Instance found! Hit “spacebar” to view content."
+		s = "Instance found! Press “spacebar” to view content."
 	}
 
 	return style.Render(s)

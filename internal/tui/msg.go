@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"github.com/MuhamedUsman/letshare/internal/client"
 	"github.com/MuhamedUsman/letshare/internal/server"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -21,6 +20,9 @@ type errMsg struct {
 }
 
 type fsErrMsg string
+
+// paired with MainModel.Update to signal to main model that user has aborted the shutdown
+type abortShutdownMsg struct{}
 
 // spaceFocusSwitchMsg manages child switching using tab & shift+tab
 type spaceFocusSwitchMsg struct{}
@@ -74,21 +76,14 @@ type downloadSelectionsMsg struct {
 	selections []downloadSelection
 }
 
-type downloadCompletedMsg int
+type downloadCompletedMsg struct{}
 
-type downloadFailedMsg struct {
-	// globalID used to identify the download in the download model
-	gid int
-	// errMsg is the error message to display
-	errMsg errMsg
-}
+type downloadFailedMsg errMsg
 
-type downloadProgressMsg struct {
-	p   client.Progress
-	gid int // global ID of the download
-}
+// bool indicates whether a single item is deleted or multiple items are deleted
+type deletionConfirmationMsg bool // single (true), multiple (false)
 
-type deletionConfirmationMsg bool
+type pausedMsg struct{}
 
 // preferencesSavedMsg signals the changes to the preferences are saved,
 // bool indicates whether to inactivate the preferences model or not
@@ -111,6 +106,8 @@ type zippingErrMsg error
 type zippingCanceledMsg struct{}
 
 type serverLogMsg server.Log
+
+type serverStartupErrMsg errMsg
 
 type rerenderPreferencesMsg struct{}
 
@@ -141,6 +138,12 @@ type fetchFileFailedMsg struct {
 	status string
 	errMsg errMsg
 }
+
+// it holds cmds to be executed
+// for usage see downloadModel.startDownloads() method
+// it is used to avoid blocking UI, when cmds take longer to build,
+// as we have to acquire mutex
+type cmdGroupMsg []tea.Cmd
 
 func msgToCmd[t tea.Msg](msg t) tea.Cmd {
 	return func() tea.Msg {

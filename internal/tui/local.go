@@ -43,7 +43,7 @@ func (m localSpaceModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m localSpaceModel) Init() tea.Cmd {
-	return tea.Batch(m.dirNavigation.Init())
+	return m.dirNavigation.Init()
 }
 
 func (m localSpaceModel) Update(msg tea.Msg) (localSpaceModel, tea.Cmd) {

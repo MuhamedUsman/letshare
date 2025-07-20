@@ -497,7 +497,10 @@ func (m extReceiveModel) fetchFileIndexes() tea.Cmd {
 	return func() tea.Msg {
 		fInfos, status, err := m.client.IndexFiles(m.instance)
 		if err != nil {
-			return errMsg{err: err, fatal: true}
+			return fetchFileFailedMsg{
+				status: "Fetching files failed, you may want to retry…",
+				errMsg: errMsg{errHeader: "UNKNOWN ERROR", errStr: unwrapErr(err).Error()},
+			}
 		}
 		if status == http.StatusRequestTimeout {
 			return fetchFileFailedMsg{
@@ -505,7 +508,6 @@ func (m extReceiveModel) fetchFileIndexes() tea.Cmd {
 				errMsg: errMsg{
 					errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
 					errStr:    "Fetching files, the server instance is not responding, it might be down.",
-					fatal:     false,
 				},
 			}
 		} else if status != http.StatusOK {

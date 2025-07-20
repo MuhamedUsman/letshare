@@ -223,8 +223,9 @@ func (m extDirNavModel) Update(msg tea.Msg) (extDirNavModel, tea.Cmd) {
 			m.extDirTable.Blur()
 		}
 		m.extDirTable.SetCursor(0)
-		// if table is focused, then extensionSpace child also needs to be focused
-		return m, msgToCmd(extensionChildSwitchMsg{extDirNav, m.focusOnExtend})
+		if currentFocus == local {
+			return m, msgToCmd(extensionChildSwitchMsg{extDirNav, m.focusOnExtend})
+		}
 
 	case resetExtDirTableSelectionsMsg:
 		m.allSelected = false

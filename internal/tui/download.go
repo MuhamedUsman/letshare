@@ -12,12 +12,14 @@ import (
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/dustin/go-humanize"
 	"github.com/mattn/go-runewidth"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -72,6 +74,7 @@ func (ds downloadState) string() string {
 }
 
 type fileDownload struct {
+	mu   sync.RWMutex
 	name string
 	// mDNS instance name used to download the file
 	instance string
@@ -87,6 +90,8 @@ type fileDownload struct {
 	// we'll only call Close func on it,
 	// to indicate completion, pause, cancel
 	*client.DownloadTracker
+
+	// these fields are not protected by the mutex
 	progCh chan client.Progress
 	prog   client.Progress
 }
@@ -135,11 +140,13 @@ func (d displayDownloads) filterByCurrentStates(s downloadState) displayDownload
 
 type downloadManager struct {
 	// don't move around the elements in this slice
+	// we rely on the indexes of the download
 	downloads []*fileDownload
+	progCh    chan client.ProgressMsg
 	// path to the download directory
 	downloadPath string
-	activeDowns  atomic.Int32
 	maxDownloads int
+	activeDowns  *atomic.Int32
 }
 
 type downloadModel struct {
@@ -163,8 +170,10 @@ func initialDownloadModel() downloadModel {
 	}
 
 	dm := &downloadManager{
+		progCh:       make(chan client.ProgressMsg, 100),
 		downloadPath: cfg.Receive.DownloadFolder,
 		maxDownloads: cfg.Receive.ConcurrentDownloads,
+		activeDowns:  new(atomic.Int32),
 	}
 	return downloadModel{
 		vp:            vp,
@@ -179,7 +188,7 @@ func (m downloadModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m downloadModel) Init() tea.Cmd {
-	return nil
+	return m.trackProgress()
 }
 
 func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
@@ -197,20 +206,20 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 		case "shift+tab":
 			m.tabIdx = (m.tabIdx - 1 + len(tabs)) % len(tabs)
 			m.handleViewportScroll(up)
-			m.cursor = 0 // reset cursor to 0 on tab switch
+			m.cursor = 0
 			m.vp.GotoTop()
 
 		case "right", "l":
 			if m.tabIdx < len(tabs)-1 {
 				m.tabIdx++
-				m.cursor = 0 // reset cursor to 0 on tab switch
+				m.cursor = 0
 				m.vp.GotoTop()
 			}
 
 		case "left", "h":
 			if m.tabIdx > 0 {
 				m.tabIdx--
-				m.cursor = 0 // reset cursor to 0 on tab switch
+				m.cursor = 0
 				m.vp.GotoTop()
 			}
 
@@ -230,20 +239,20 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 			return m, m.inactiveDownload()
 
 		case "p":
-			d := m.dm.downloads[m.selCardID]
-			if d.state == downloading || d.state == queued {
-				m.pauseDownloads(m.selCardID)
-			}
+			return m, m.pauseDownloads(m.selCardID)
 
 		case "ctrl+p":
 			ids := m.getDownloadIDs(downloading, queued)
-			m.pauseDownloads(ids...)
+			return m, m.pauseDownloads(ids...)
 
 		case "r":
 			d := m.dm.downloads[m.selCardID]
+			d.mu.RLock()
 			if d.state == paused || d.state == failed {
+				d.mu.RUnlock()
 				return m, m.startDownloads(m.selCardID)
 			}
+			d.mu.RUnlock()
 
 		case "ctrl+r":
 			var ids []int
@@ -257,6 +266,15 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 			default: // noop
 			}
 			return m, m.startDownloads(ids...)
+
+		case "x":
+			m.clearDownloads(m.selCardID)
+			m.renderViewport()
+
+		case "ctrl+x":
+			ids := m.getDownloadIDs(completed)
+			m.clearDownloads(ids...)
+			m.renderViewport()
 
 		case "d", "delete":
 			return m, m.confirmAndDelete(m.selCardID)
@@ -302,25 +320,23 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 		m.tabIdx = int(downloading) // switch to downloading tab
 		return m, m.startDownloads(ids...)
 
-	case downloadProgressMsg:
-		d := m.dm.downloads[msg.gid]
-		d.prog = msg.p
+	case client.ProgressMsg:
+		d := m.dm.downloads[msg.ID]
+		d.prog = msg.P
 		m.renderViewport()
-		return m, tea.Batch(m.trackProgress(d.progCh, msg.gid), m.handleViewportUpdate(msg))
+		return m, tea.Batch(m.trackProgress(), m.handleViewportUpdate(msg))
 
 	case downloadCompletedMsg:
-		d := m.dm.downloads[msg]
-		m.setDownloadAsCompleted(d)
 		m.renderViewport()
 		// start next downloads if any are queued
 		ids := m.getDownloadIDs(queued)
-		return m, m.startDownloads(ids...)
+		return m, tea.Batch(m.startDownloads(ids...), m.handleViewportUpdate(msg))
 
 	case downloadFailedMsg:
-		d := m.dm.downloads[msg.gid]
-		m.setDownloadAsFailed(d)
 		m.renderViewport()
-		return m, tea.Batch(msgToCmd(msg.errMsg), m.handleViewportUpdate(msg))
+		// start next downloads if any are queued
+		ids := m.getDownloadIDs(queued)
+		return m, tea.Batch(msgToCmd(errMsg(msg)), m.startDownloads(ids...), m.handleViewportUpdate(msg))
 
 	case deletionConfirmationMsg:
 		m.renderViewport()
@@ -329,6 +345,10 @@ func (m downloadModel) Update(msg tea.Msg) (downloadModel, tea.Cmd) {
 			m.cursor--
 			m.renderViewport() // renderAgain
 		}
+
+	case pausedMsg:
+		m.renderViewport()
+
 	}
 
 	return m, m.handleViewportUpdate(msg)
@@ -363,7 +383,7 @@ func (m downloadModel) renderStatusBar() string {
 	}
 	speed := ""
 	if m.dm.activeDowns.Load() > 0 {
-		var s int32
+		var s int64
 		for _, d := range m.dm.downloads {
 			if d.state == downloading {
 				s += d.prog.S
@@ -593,8 +613,11 @@ func (m *downloadModel) inactiveDownload() tea.Cmd {
 
 func (m downloadModel) getCurrentTabTotalCount() int {
 	var t int
+	curTabState := downloadState(m.tabIdx)
 	for _, fd := range m.dm.downloads {
-		if (downloadState(m.tabIdx) == fd.state || downloadState(m.tabIdx) == all) && fd.state != deleted {
+		if curTabState == downloading && (fd.state == downloading || fd.state == queued) {
+			t++
+		} else if (curTabState == fd.state || curTabState == all) && fd.state != deleted {
 			t++
 		}
 	}
@@ -633,12 +656,20 @@ func (m *downloadModel) startDownloads(ids ...int) tea.Cmd {
 	var cmds []tea.Cmd
 	for _, id := range ids {
 		d := m.dm.downloads[id]
-		if m.dm.activeDowns.Load() >= int32(m.dm.maxDownloads) {
-			d.state = queued
+		d.mu.Lock()
+
+		if d.state == completed || d.state == deleted {
+			d.mu.Unlock()
 			continue
 		}
+
+		if m.dm.activeDowns.Load() >= int32(m.dm.maxDownloads) {
+			d.state = queued
+			d.mu.Unlock()
+			continue
+		}
+
 		d.state = downloading
-		d.progCh = make(chan client.Progress, 10)
 		if d.prog.D == 0 {
 			// no progress, so reset the createdAt time
 			// so time taken to download is accurate
@@ -646,44 +677,67 @@ func (m *downloadModel) startDownloads(ids ...int) tea.Cmd {
 		}
 
 		name := filepath.Join(m.dm.downloadPath, d.name)
-		dt, err := client.NewDownloadTracker(name, d.progCh)
+		dt, err := client.NewDownloadTracker(id, name, m.dm.progCh)
 		if err != nil {
-			return msgToCmd(errMsg{err: err, fatal: true})
+			return msgToCmd(errMsg{errHeader: "UNKNOWN ERROR", errStr: unwrapErr(err).Error()})
 		}
 		d.DownloadTracker = dt
 
-		cmds = append(cmds, m.trackProgress(d.progCh, id))
-		cmds = append(cmds, m.downloadFile(d, id))
-
+		cmds = append(cmds, m.downloadFile(d))
 		m.dm.activeDowns.Add(1)
+		d.mu.Unlock()
 	}
 	return tea.Batch(cmds...)
 }
 
-func (m *downloadModel) pauseDownloads(ids ...int) {
-	for _, id := range ids {
-		d := m.dm.downloads[id]
-		if d.state == downloading {
-			_ = d.Close()
-			d.filename = d.Filename()
-			m.dm.activeDowns.Add(-1)
+func (m *downloadModel) pauseDownloads(ids ...int) tea.Cmd {
+	return func() tea.Msg {
+		for _, id := range ids {
+			d := m.dm.downloads[id]
+			d.mu.Lock()
+			if d.state == downloading {
+				_ = d.Close()
+				d.filename = d.Filename()
+				decrementIfPositive(m.dm.activeDowns)
+			}
+			if d.state == downloading || d.state == queued {
+				d.state = paused
+			}
 			d.DownloadTracker = nil // dereference the tracker
+			d.mu.Unlock()
 		}
-		d.state = paused
+		return pausedMsg{}
 	}
 }
 
-func (m downloadModel) deleteDownloads(ids ...int) {
+func (m downloadModel) clearDownloads(ids ...int) {
 	for _, id := range ids {
 		d := m.dm.downloads[id]
-		if d.state == downloading {
-			_ = d.Close()
-			d.filename = d.Filename()
-			m.dm.activeDowns.Add(-1)
+		d.mu.Lock()
+		if d.state == completed {
+			// just mark it to deleted as we hide deleted downloads form the UI
+			d.state = deleted
 		}
-		_ = os.Remove(d.filename) // ignore error, if file is not found, it is already deleted
-		d.state = deleted         // mark the download as deleted
-		d.DownloadTracker = nil   // dereference the tracker
+		d.mu.Unlock()
+	}
+}
+
+func (m downloadModel) deleteDownloads(ids ...int) tea.Cmd {
+	return func() tea.Msg {
+		for _, id := range ids {
+			d := m.dm.downloads[id]
+			d.mu.Lock()
+			if d.state == downloading {
+				_ = d.Close()
+				d.filename = d.Filename()
+				decrementIfPositive(m.dm.activeDowns)
+			}
+			_ = os.Remove(d.filename)
+			d.state = deleted
+			d.DownloadTracker = nil // dereference the tracker
+			d.mu.Unlock()
+		}
+		return deletionConfirmationMsg(false)
 	}
 }
 
@@ -702,9 +756,8 @@ func (m downloadModel) confirmAndDelete(ids ...int) tea.Cmd {
 		)
 	}
 	pf := func() tea.Cmd {
-		m.deleteDownloads(ids...) // works because fileDownload is a pointer
 		single := len(ids) == 1
-		return msgToCmd(deletionConfirmationMsg(single))
+		return tea.Batch(msgToCmd(deletionConfirmationMsg(single)), m.deleteDownloads(ids...))
 	}
 	return msgToCmd(alertDialogMsg{
 		header:         "DELETE DOWNLOADS",
@@ -716,24 +769,9 @@ func (m downloadModel) confirmAndDelete(ids ...int) tea.Cmd {
 	})
 }
 
-func (m *downloadModel) setDownloadAsCompleted(d *fileDownload) {
-	d.state = completed
-	m.dm.activeDowns.Add(-1)
-	_ = d.Close()
-	d.filename = d.Filename()
-	d.completedAt = time.Now()
-	d.DownloadTracker = nil // dereference the tracker
-}
-
-func (m *downloadModel) setDownloadAsFailed(d *fileDownload) {
-	d.state = failed
-	m.dm.activeDowns.Add(-1)
-	_ = d.Close()
-	d.filename = d.Filename()
-	d.DownloadTracker = nil // dereference the tracker
-}
-
 // getDownloadIDs returns the IDs of the downloads that are in the given states.
+// No locking here as the returned IDs are used in commands that run in separate
+// goroutines and perform their own state checking under proper locks.
 func (m downloadModel) getDownloadIDs(s ...downloadState) []int {
 	ids := make([]int, 0, len(m.dm.downloads))
 	for i, d := range m.dm.downloads {
@@ -746,66 +784,112 @@ func (m downloadModel) getDownloadIDs(s ...downloadState) []int {
 	return ids
 }
 
-// gid(global ID) will be used to identify the download once downloadFile sends a response back to downloadModel
-func (m downloadModel) downloadFile(f *fileDownload, gid int) tea.Cmd {
+// downloadFile returns a tea.Cmd that performs the actual file download.
+// It handles race conditions where the download might be paused or deleted
+// while the command is waiting to execute or during the download process.
+func (m downloadModel) downloadFile(fd *fileDownload) tea.Cmd {
 	return func() tea.Msg {
-		status, err := m.client.DownloadFile(f.DownloadTracker, f.instance, f.accessID)
-		// we'll close the download once its completed || paused || failed in the update function
+		defer decrementIfPositive(m.dm.activeDowns)
+
+		// CONCURRENCY NOTE: Between creating this command and its execution in the tea event loop,
+		// user actions (pause/delete) may have modified the download state. For small files that
+		// download quickly, this race condition is more likely. We check for nil DownloadTracker
+		// to handle this case gracefully.
+		if fd.DownloadTracker == nil {
+			return nil
+		}
+
+		status, err := m.client.DownloadFile(fd.DownloadTracker, fd.instance, fd.accessID)
+		em := errMsg{}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				// if context is cancelled, download is stopped by user, so return quietly
-				return nil
+				return nil // if context is cancelled, download is stopped by user, so return quietly
 			}
 			err = unwrapErr(err)
-			return downloadFailedMsg{
-				gid: gid,
-				errMsg: errMsg{
-					errHeader: "DOWNLOAD FAILED",
-					errStr:    fmt.Sprintf("Failed to download file, %s.", err.Error()),
-				},
+			em.errHeader = "DOWNLOAD FAILED"
+			em.errStr = fmt.Sprintf("Failed to download file, %s.", err.Error())
+			log.Println(err.Error())
+		}
+
+		fd.mu.Lock()
+		defer fd.mu.Unlock()
+
+		// CONCURRENCY NOTE: We cannot hold the mutex during the entire download operation
+		// as it would block user actions like pause/delete. Instead, we release the mutex
+		// during download and re-acquire it afterward, checking if DownloadTracker is still valid.
+		dtExists := fd.DownloadTracker != nil
+
+		switch status {
+		case http.StatusOK, http.StatusPartialContent:
+			if dtExists {
+				_ = fd.Close()
+				fd.filename = fd.Filename()
+			}
+
+			fd.state = completed
+			fd.completedAt = time.Now()
+			fd.DownloadTracker = nil // dereference the tracker
+			return downloadCompletedMsg{}
+
+		case http.StatusRequestTimeout:
+			em.errStr = "Download failed, the server instance is not responding, it might be down."
+
+		case http.StatusNotFound:
+			em.errStr = fmt.Sprintf("Download Failed, file with access id %q not found on the server.", strconv.Itoa(int(fd.accessID)))
+
+		default:
+			if err == nil { // is nil
+				em.errStr = fmt.Sprintf("Download Failed, Server returned status code %q.", strconv.Itoa(status))
 			}
 		}
 
-		var errStr string
-		switch status {
-		case http.StatusOK, http.StatusPartialContent:
-			return downloadCompletedMsg(gid)
-		case http.StatusRequestTimeout:
-			errStr = "Download failed, the server instance is not responding, it might be down."
-		case http.StatusNotFound:
-			errStr = fmt.Sprintf("Download Failed, file with access id %q not found on the server.", strconv.Itoa(int(f.accessID)))
-		default:
-			errStr = fmt.Sprintf("Download Failed, Server returned status code %q.", strconv.Itoa(status))
+		// if we are here that means download is failed
+		if dtExists {
+			_ = fd.Close()
+			fd.filename = fd.Filename()
 		}
+		fd.state = failed
+		fd.DownloadTracker = nil // dereference the tracker
 
-		return downloadFailedMsg{
-			gid: gid,
-			errMsg: errMsg{
-				errHeader: strings.ToUpper(http.StatusText(status)),
-				errStr:    errStr,
-			},
-		}
+		return downloadFailedMsg(em)
 	}
 }
 
-func (m downloadModel) trackProgress(ch chan client.Progress, gid int) tea.Cmd {
+func (m downloadModel) trackProgress() tea.Cmd {
 	return func() tea.Msg {
-		for p := range ch {
-			return downloadProgressMsg{p, gid}
+		for p := range m.dm.progCh {
+			return p
 		}
 		return nil
 	}
 }
 
-func (m downloadModel) deletePartailDownloads() {
-	// ignore the errors, just delete the files that are partially downloaded
-	// it will be called when the app is closing, so no time to show the error
-	e, _ := os.ReadDir(m.dm.downloadPath)
-	for _, f := range e {
-		if strings.HasSuffix(f.Name(), client.IncompleteDownloadKey) {
-			_ = os.Remove(filepath.Join(m.dm.downloadPath, f.Name()))
+func (m downloadModel) deletePartailDownloads() tea.Cmd {
+	return func() tea.Msg {
+		// first stop all the downloads
+		for _, d := range m.dm.downloads {
+			d.mu.Lock()
+			if d.state == downloading {
+				_ = d.Close()
+				d.filename = d.Filename() // save the filename to delete it later
+				// we don't decrement active downloads here, as that may start queued downloads
+				d.DownloadTracker = nil
+			}
+			d.mu.Unlock()
 		}
+		// then delete the partial downloads
+		e, _ := os.ReadDir(m.dm.downloadPath)
+		for _, f := range e {
+			if strings.HasSuffix(f.Name(), client.IncompleteDownloadKey) {
+				_ = os.Remove(filepath.Join(m.dm.downloadPath, f.Name()))
+			}
+		}
+		return nil
 	}
+}
+
+func (m downloadModel) hasPartialDownloads() bool {
+	return len(m.getDownloadIDs(downloading, paused, failed)) > 0
 }
 
 func customDownloadHelp(show bool) *lipTable.Table {
@@ -818,6 +902,7 @@ func customDownloadHelp(show bool) *lipTable.Table {
 			{"d/ctrl+d", "delete at cursor/delete all"},
 			{"r/ctrl+r", "resume at cursor/resume all"},
 			{"p/ctrl+p", "pause at cursor/pause all"},
+			{"x/ctrl+x", "clear at cursor/clear all"},
 			{"tab/shift+tab", "switch download tabs (looped)"},
 			{"←/→ OR l/h", "switch download tabs"},
 			{"↓/↑", "move cursor"},
@@ -847,4 +932,16 @@ func calculatePercent(done, total int64) string {
 	}
 	percent := float64(done) / float64(total) * 100
 	return fmt.Sprintf("%.1f%%", percent)
+}
+
+func decrementIfPositive(addr *atomic.Int32) {
+	for {
+		c := addr.Load()
+		if c <= 0 {
+			return
+		}
+		if addr.CompareAndSwap(c, c-1) {
+			return
+		}
+	}
 }

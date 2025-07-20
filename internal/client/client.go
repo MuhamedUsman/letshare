@@ -21,28 +21,36 @@ import (
 
 const IncompleteDownloadKey = ".incd"
 
+var ErrConnClosed = errors.New("server sent GOAWAY and closed the connection")
+
 var (
 	once   sync.Once
 	client *Client
 )
 
 type Progress struct {
-	// D: downloaded bytes, T: total bytes
-	D, T int64
-	// S: speed per sec in bytes
-	S int32
+	// D: downloaded bytes, T: total bytes, S speed in bytes per second
+	D, T, S int64
+}
+
+type ProgressMsg struct {
+	ID int
+	P  Progress
 }
 
 type DownloadTracker struct {
+	// it is used to identify which progress update
+	// belongs to which download
+	id int
 	// f: underlying writer
 	f *os.File
 	// finalName of the file after download is complete
 	finalName string
-	// d: downloaded bytes, t: total bytes
-	d, t atomic.Int64
-	// s: speed per second in bytes
-	s                     atomic.Int32
-	pch                   chan Progress
+	// d: downloaded bytes, t: total bytes, s: speed per second in byte
+	d, t, s atomic.Int64
+	// this chan lifecycle is managed by the DownloadManager
+	// so don't close it in the DownloadTracker.Close method
+	pch                   chan ProgressMsg
 	at                    time.Time
 	isTracking, firstSend bool
 	ctx                   context.Context
@@ -50,16 +58,17 @@ type DownloadTracker struct {
 }
 
 // NewDownloadTracker prepares a file for download and returns a DownloadTracker.
-func NewDownloadTracker(f string, ch chan Progress) (*DownloadTracker, error) {
+func NewDownloadTracker(id int, f string, ch chan ProgressMsg) (*DownloadTracker, error) {
 	file, size, err := prepareFileForDownload(f)
 	if err != nil {
 		return nil, fmt.Errorf("preparing file %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	dt := &DownloadTracker{
+		id:        id,
 		f:         file,
-		pch:       ch,
 		at:        time.Now(),
+		pch:       ch,
 		firstSend: true,
 		ctx:       ctx,
 		cancel:    cancel,
@@ -112,7 +121,6 @@ func (dt *DownloadTracker) Close() error {
 	if dt.t.Load() > 0 {
 		dt.trySend(true) // send the last progress update
 	}
-	close(dt.pch)
 	if err := dt.f.Close(); err != nil {
 		return err
 	}
@@ -145,16 +153,19 @@ func (dt *DownloadTracker) trackPerSec() {
 		case <-t.C:
 			curr := dt.d.Load()
 			ps := max(0, curr-prev)
-			dt.s.Store(int32(ps))
+			dt.s.Store(ps)
 		}
 	}
 }
 
 func (dt *DownloadTracker) trySend(force bool) bool {
-	p := Progress{
-		D: dt.d.Load(),
-		T: dt.t.Load(),
-		S: dt.s.Load(),
+	p := ProgressMsg{
+		ID: dt.id,
+		P: Progress{
+			D: dt.d.Load(),
+			T: dt.t.Load(),
+			S: dt.s.Load(),
+		},
 	}
 	if force {
 		select {
@@ -183,14 +194,11 @@ func Get() *Client {
 	once.Do(func() {
 		var proto http.Protocols
 		proto.SetUnencryptedHTTP2(true)
-		proto.SetHTTP1(true)
 		client = &Client{
 			mdns: mdns.Get(),
 			c: http.Client{Transport: &http.Transport{
-				Proxy:              nil,
-				DisableCompression: true,
-				ForceAttemptHTTP2:  false,
-				HTTP2:              nil,
+				DisableCompression: true, // same network, no need for compression
+				ForceAttemptHTTP2:  true,
 				Protocols:          &proto,
 			}},
 		}
@@ -203,7 +211,7 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 	defer cancel()
 	req, err := client.newRequest(ctx, instance, http.MethodGet, "", nil)
 	if err != nil {
-		return nil, -1, fmt.Errorf("creating request: %v", err)
+		return nil, -1, fmt.Errorf("creating request: %w", err)
 	}
 
 	resp, err := c.c.Do(req)
@@ -212,7 +220,7 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
 			return nil, http.StatusRequestTimeout, nil
 		}
-		return nil, -1, fmt.Errorf("indexing files: %v", err)
+		return nil, -1, fmt.Errorf("indexing files: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -223,12 +231,12 @@ func (c *Client) IndexFiles(instance string) ([]*domain.FileInfo, int, error) {
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, -1, fmt.Errorf("reading directory index response: %v", unwrapErr(err))
+		return nil, -1, fmt.Errorf("reading directory index response: %w", unwrapErr(err))
 	}
 
 	var r map[string][]*domain.FileInfo
 	if err = json.Unmarshal(b, &r); err != nil {
-		return nil, -1, fmt.Errorf("parsing directory index JSON: %v", err)
+		return nil, -1, fmt.Errorf("parsing directory index JSON: %w", err)
 	}
 
 	return r["fileIndexes"], resp.StatusCode, nil
@@ -248,9 +256,8 @@ func (c *Client) DownloadFile(dst *DownloadTracker, instance string, accessID ui
 	var status int
 	status, err = c.downloadFile(dst, instance, path)
 	if err != nil {
-		s := "server sent GOAWAY and closed the connection"
-		if strings.Contains(err.Error(), s) {
-			return -1, errors.New(s)
+		if strings.Contains(err.Error(), ErrConnClosed.Error()) {
+			return -1, ErrConnClosed
 		}
 		return -1, unwrapErr(err)
 	}

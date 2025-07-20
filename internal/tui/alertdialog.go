@@ -144,6 +144,24 @@ func (m alertDialogModel) Update(msg tea.Msg) (alertDialogModel, tea.Cmd) {
 			}
 			return m, tea.Batch(cmd, m.hide())
 		}
+
+		// Auto-dismiss alert dialogs when the underlying process completes.
+		// When a process finishes, it sends spaceFocusSwitchMsg to switch views.
+		// If an alert dialog is still showing for that process, we dismiss it automatically.
+		// Example: "Stop zipping" dialog is open → zipping completes → local space switches
+		// to sendModel → this dismisses the now-irrelevant dialog
+	case spaceFocusSwitchMsg:
+		if currentFocus != alert && m.active {
+			m.prevFocus = currentFocus
+			var cmd tea.Cmd
+			if m.escFunc != nil {
+				cmd = m.escFunc()
+			}
+			if m.isTimerAlert() {
+				m.timer = timer.NewWithInterval(5*time.Second, 100*time.Millisecond)
+			}
+			return m, tea.Batch(cmd, m.hide())
+		}
 	}
 
 	return m, nil

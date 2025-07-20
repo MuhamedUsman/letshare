@@ -12,6 +12,7 @@ import (
 	"github.com/mattn/go-runewidth"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -162,7 +163,15 @@ func (m preferenceModel) Update(msg tea.Msg) (preferenceModel, tea.Cmd) {
 				if isValid, txt := m.validateInput(m.txtInput.Value()); !isValid {
 					return m, m.showInvalidInputAlert(txt)
 				}
-				m.preferenceQues[m.cursor].input = m.txtInput.Value()
+				s := m.txtInput.Value()
+				if preferenceKey(m.cursor) == downloadFolder {
+					s = filepath.Clean(s)
+					s = filepath.ToSlash(s) // ensure forward slashes
+				}
+				if preferenceKey(m.cursor) == instanceName {
+					s = strings.ReplaceAll(s, " ", "-") // ensure no spaces in instance name
+				}
+				m.preferenceQues[m.cursor].input = s
 				m.renderViewport()
 				m.resetInsertMode()
 				m.insertMode = false
@@ -559,8 +568,8 @@ func (m preferenceModel) savePreferences(exit bool) tea.Cmd {
 	return func() tea.Msg {
 		if err := config.Save(cfg); err != nil {
 			return errMsg{
-				err:   err,
-				fatal: true,
+				errHeader: "PREFERENCE SAVE FAILED!",
+				errStr:    err.Error(),
 			}
 		}
 		return preferencesSavedMsg(exit)
@@ -623,18 +632,21 @@ func (m *preferenceModel) confirmSaveChanges() tea.Cmd {
 func (m preferenceModel) validateInput(in string) (bool, string) {
 	switch m.preferenceQues[m.cursor].title {
 	case username:
-		return utf8.RuneCountInString(in) >= 3, "Username must be at least 3 characters long."
+		return utf8.RuneCountInString(in) >= 3 && utf8.RuneCountInString(in) <= 30,
+			"Username must be between 3-30 characters long."
 	case instanceName:
-		return utf8.RuneCountInString(in) >= 3, "Instance name must be at least 3 characters long."
+		return utf8.RuneCountInString(in) >= 3 && utf8.RuneCountInString(in) <= 16,
+			"Instance name must be 3-16 characters long."
 	case sharedZipName:
-		return utf8.RuneCountInString(in) >= 3 && strings.HasSuffix(in, ".zip"),
-			"Shared ZIP name must be at least 3 characters long & ends with “.zip”"
+		return utf8.RuneCountInString(in) >= 3 && utf8.RuneCountInString(in) <= 30 && strings.HasSuffix(in, ".zip"),
+			"Shared ZIP name must be 3-30 characters long & ends with “.zip”"
 	case downloadFolder:
 		fstat, err := os.Stat(in)
 		return err == nil && fstat.IsDir(), "Download folder must be a valid directory path with read & write access."
 	case concurrentDownloads:
 		n, err := strconv.Atoi(in)
-		return err == nil && n >= 1 && n <= 10, "Concurrent downloads must be a number between 1 and 10."
+		return err == nil && n >= 1 && n <= config.MaxConcurrentDownloads,
+			fmt.Sprintf("Concurrent downloads must be a number between 1 and %d.", config.MaxConcurrentDownloads)
 	default:
 		return true, ""
 	}

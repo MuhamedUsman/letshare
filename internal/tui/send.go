@@ -16,6 +16,7 @@ import (
 	"github.com/mattn/go-runewidth"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -119,6 +120,11 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
+		// we're not respecting disableKeymap here, making sure we don't consume that keyEvent by send it back
+		if msg.Type == tea.KeyCtrlC && len(m.files) > 0 {
+			return m, tea.Batch(m.deleteTempFiles(), msgToCmd(tea.KeyMsg{Type: tea.KeyCtrlC}))
+		}
+
 		if m.disableKeymap {
 			return m, nil
 		}
@@ -139,7 +145,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				m.selected = m.btnIdx
 				conf := m.getConfig()
 				m.customInstance = conf.Share.InstanceName
-				// server uses non blocking send, so buffered channels
 				lch, dch := make(chan server.Log, 20), make(chan int, 20)
 				m.server = server.New(conf.Share.StoppableInstance, lch, dch)
 				extSendChCmd := msgToCmd(handleExtSendCh{lch, dch})
@@ -156,18 +161,13 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 				return m, msgToCmd(extensionChildSwitchMsg{extSend, true})
 			}
 
-		case "ctrl+c":
-			if len(m.files) > 0 {
-				m.deleteTempFiles()
-			}
-
 		case "ctrl+r":
 			if m.isSelected && m.isServing {
 				m.mdns.ReloadPublisher()
 			}
 
 		case "esc":
-			if !m.isServing {
+			if !m.isServing && !m.isShutdown {
 				return m, m.confirmEsc()
 			}
 
@@ -183,6 +183,9 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 
 	case instanceServingMsg:
 		m.isServing = true
+
+	case serverStartupErrMsg:
+		return m, tea.Batch(msgToCmd(instanceShutdownMsg{}), msgToCmd(errMsg(msg)))
 
 	case instanceShutdownMsg:
 		m.isSelected, m.isServing, m.isShutdown = false, false, true
@@ -220,7 +223,6 @@ func (m sendModel) Update(msg tea.Msg) (sendModel, tea.Cmd) {
 			return m, msgToCmd(errMsg{
 				errHeader: strings.ToUpper(http.StatusText(http.StatusRequestTimeout)),
 				errStr:    "Request failed, the server instance is not responding, it might be down.",
-				fatal:     false,
 			})
 
 		case requestRejected, serving:
@@ -318,10 +320,10 @@ func (m sendModel) renderInfoText() string {
 		s := fmt.Sprintf("Public default address, “http://letshare.local%s”", port)
 		sb.WriteString(baseStyle.Render(s))
 	case customInstance:
-		s := baseStyle.Render("For privacy, a custom address, to update hit “ctrl+p”")
+		s := baseStyle.Render("A custom address for privacy, to update hit “ctrl+p”")
 		if m.isSelected && m.btnIdx == customInstance {
 			s = fmt.Sprintf("Private custom address, “http://%s.local%s”", m.customInstance, port)
-			s = baseStyle.Render()
+			s = baseStyle.Render(s)
 		}
 		sb.WriteString(s)
 	case noInstance:
@@ -336,7 +338,7 @@ func (m sendModel) renderInfoText() string {
 	}
 
 	if m.isServing {
-		sb.WriteString(baseStyle.UnsetBlink().Render("The server instance is up & running… Hit “Q/q” to shutdown."))
+		sb.WriteString(baseStyle.UnsetBlink().Render("The server instance is up & running… Press “Q/q” to shutdown."))
 	} else if m.isShutdown {
 		sb.WriteString(baseStyle.Foreground(highlightColor).Blink(true).Render("Shutting down the server instance, please wait…"))
 	} else {
@@ -503,24 +505,33 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 	}
 
 	var cmds [4]tea.Cmd
+
 	// publish the mdns service
 	cmds[0] = func() tea.Msg {
 		var err error
 		uname := m.getConfig().Personal.Username
+
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			hostname := fmt.Sprintf("%s.%s", instance, mdns.Domain)
 			err = m.mdns.Publish(m.server.StopCtx, instance, hostname, uname, uint16(server.GetPort()))
 		})
+
 		if err != nil && !errors.Is(err, context.Canceled) {
-			return errMsg{err: err, fatal: true}
+			return serverStartupErrMsg(errMsg{
+				errHeader: "INSTANCE PUBLISHING FAILED!",
+				errStr:    unwrapErr(err).Error(),
+			})
 		}
 		return nil
 	}
+
 	cmds[1] = func() tea.Msg {
 		var err error
+
 		bgtask.Get().RunAndBlock(func(_ context.Context) {
 			err = m.server.StartServer(m.files...)
 		})
+
 		// DeadlineExceeded: In case of graceful shutdown & active downloads
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -532,36 +543,41 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 					),
 				}
 			}
-			return errMsg{err: err, fatal: true}
+			return serverStartupErrMsg(errMsg{
+				errHeader: "SERVER STARTUP FAILED!",
+				errStr:    unwrapErr(err).Error(),
+			})
 		}
 		return instanceShutdownMsg{}
 	}
+
 	cmds[2] = m.notifyForShutdownReqWhenNotIdle()
 	cmds[3] = msgToCmd(instanceServingMsg{})
 	return tea.Batch(cmds[:]...)
 }
 
-func (m *sendModel) shutdownServer(force bool) tea.Cmd {
+func (m *sendModel) shutdownServer(quitting bool) tea.Cmd {
 	return func() tea.Msg {
-		if force {
-			if m.server.ActiveDowns > 0 {
-				return alertDialogMsg{
-					header:         "FORCED SHUTDOWN!",
-					body:           "The server instance is being shutdown forcefully, all active downloads will abruptly halt.",
-					positiveBtnTxt: "YUP!",
-					negativeBtnTxt: "NOPE!",
-					cursor:         positive,
-					positiveFunc: func() tea.Cmd {
-						m.server.ShutdownServer()
-						shutdownBgTasks()
-						return tea.Quit
-					},
-				}
-			}
+		if quitting {
 			m.server.ShutdownServer()
-			shutdownBgTasks()
-			return tea.Quit()
+			return instanceShutdownMsg{}
 		}
+
+		if m.server.ActiveDowns > 0 {
+			p := func() tea.Cmd {
+				m.server.ShutdownServer()
+				return msgToCmd(instanceShutdownMsg{})
+			}
+			return alertDialogMsg{
+				header:         "FORCED SHUTDOWN!",
+				body:           "The server instance is being shutdown forcefully, all active downloads will abruptly halt.",
+				positiveBtnTxt: "YUP!",
+				negativeBtnTxt: "NOPE!",
+				cursor:         positive,
+				positiveFunc:   p,
+			}
+		}
+
 		m.server.ShutdownServer()
 		return instanceShutdownMsg{}
 	}
@@ -571,7 +587,7 @@ func (m *sendModel) stopOwnedServerInstance(instance string) tea.Cmd {
 	return func() tea.Msg {
 		statusCode, err := m.client.StopServer(instance)
 		if err != nil {
-			return tea.Batch(instanceStateCmd(idle), msgToCmd(errMsg{err: err, fatal: false}))
+			return tea.Batch(instanceStateCmd(idle), msgToCmd(errMsg{err: err}))
 		}
 		switch statusCode {
 		case http.StatusAccepted:
@@ -596,9 +612,11 @@ func (m sendModel) getConfig() config.Config {
 	return cfg
 }
 
-func (m sendModel) deleteTempFiles() tea.Cmd {
+func (m *sendModel) deleteTempFiles() tea.Cmd {
+	c := slices.Clone(m.files)
+	m.files = nil // clear the files slice to avoid deleting them again
 	return func() tea.Msg {
-		for _, p := range m.files {
+		for _, p := range c {
 			if strings.HasPrefix(p, os.TempDir()) {
 				_ = os.Remove(p)
 			}

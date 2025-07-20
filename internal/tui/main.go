@@ -19,6 +19,23 @@ const (
 	alert
 )
 
+type appShutdownState int
+
+const (
+	// whole app is in a clean state, no active server, no zipping files, no partial downloads
+	clean appShutdownState = iota
+	// app is in the state of serving files and has partial downloads (downloading || paused || failed)
+	servAndDown
+	// server is idling(not serving files) and has partial downloads
+	idleAndDown
+	// app is in the state of zipping files and has partial downloads
+	zipAndDown
+	zippingFiles
+	servingFiles
+	idleServer
+	partialDowns
+)
+
 var (
 	termW, termH int
 	currentFocus focusSpace
@@ -46,11 +63,14 @@ type eventCapturer interface {
 type FinalErrCh chan<- error
 
 type MainModel struct {
-	localSpace         localSpaceModel
-	extensionSpace     extensionSpaceModel
-	remoteSpace        remoteSpaceModel
-	alertDialog        alertDialogModel
-	finalErrCh         FinalErrCh
+	localSpace     localSpaceModel
+	extensionSpace extensionSpaceModel
+	remoteSpace    remoteSpaceModel
+	alertDialog    alertDialogModel
+	finalErrCh     FinalErrCh
+	// number of models that have been signaled for graceful shutdown
+	// see ctrl+c case in MainModel.Update for how it works
+	shutdownCount      int
 	isFinalErrChClosed bool // true if finalErrCh is already closed
 }
 
@@ -83,8 +103,13 @@ func (m MainModel) capturesKeyEvent(msg tea.KeyMsg) bool {
 }
 
 func (m MainModel) Init() tea.Cmd {
-	currentFocus = local
-	return tea.Batch(m.localSpace.Init(), m.extensionSpace.Init(), m.remoteSpace.Init(), m.alertDialog.Init())
+	currentFocus = extension
+	return tea.Batch(
+		m.localSpace.Init(),
+		m.extensionSpace.Init(),
+		m.remoteSpace.Init(),
+		m.alertDialog.Init(),
+	)
 }
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -114,7 +139,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "tab":
-			// loop currentFocus & extendSpace b/w local, extensionSpace and remote tabs
+			// loop currentFocus b/w local, extension and remote tabs
 			currentFocus++
 			if currentFocus > remote {
 				currentFocus = local
@@ -128,26 +153,33 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, msgToCmd(spaceFocusSwitchMsg{})
 
-			// shutdown works as follows:
-			// there is a global state - shutdownOk []bool (bool slice)
-			// after ctrl+c this gives an opportunity to each model to handle the shutdown (as seen in the ctrl+c case below)
-			// each command needs to do its cleanup, show any alert that it needs, and append a true to the shutdownOk slice
-			//  each command that is called in this block (specific to a model) should return a tea.KeyCtrlC command,
-			// that is, it should not consume the ctrl+c key event
-			// when the key event comes back to the main model, it calls the next conditional statement till it shuts down.
 		case "ctrl+c":
-			if m.localSpace.send.isServing {
-				return m, m.localSpace.send.shutdownServer(true)
+			state := m.getAppShutdownState()
+			msg, cmd := m.getMsgAndCmd(state)
+
+			// no dirty state, just quit
+			if state == clean {
+				shutdownBgTasks()
+				return m, tea.Quit
 			}
-			state := m.localSpace.processFiles.zipTracker.state
-			if state == processing || state == canceling {
-				return m, m.localSpace.processFiles.confirmStopZipping(true)
+
+			// no msg just silently quit
+			if msg == "" && cmd != nil {
+				shutdownBgTasks()
+				return m, tea.Sequence(cmd, tea.Quit)
 			}
-			if m.localSpace.activeChild == send {
-				m.localSpace.send.deleteTempFiles()
-			}
-			shutdownBgTasks()
-			return m, tea.Quit
+
+			return m, msgToCmd(alertDialogMsg{
+				header:         "FORCE SHUTDOWN?",
+				body:           msg,
+				positiveBtnTxt: "YUP!",
+				negativeBtnTxt: "NOPE",
+				cursor:         positive,
+				positiveFunc: func() tea.Cmd {
+					shutdownBgTasks()
+					return tea.Sequence(cmd, tea.Quit)
+				},
+			})
 		}
 
 	case spaceFocusSwitchMsg:
@@ -191,6 +223,60 @@ func (m *MainModel) updateKeymapsByFocus() {
 	m.extensionSpace.updateKeymap(currentFocus != extension)
 	m.remoteSpace.updateKeymap(currentFocus != remote)
 	m.alertDialog.updateKeymap(currentFocus != alert)
+}
+
+func (m MainModel) getAppShutdownState() appShutdownState {
+	zipState := m.localSpace.processFiles.zipTracker.state
+	zipInProgress := zipState == processing || zipState == canceling
+	servingInProgress := m.localSpace.send.server != nil && m.localSpace.send.server.ActiveDowns > 0
+	serverIdle := m.localSpace.send.isServing && !servingInProgress
+	dirtyDowns := m.extensionSpace.download.hasPartialDownloads()
+
+	switch {
+	case zipInProgress && dirtyDowns:
+		return zipAndDown
+	case servingInProgress && dirtyDowns:
+		return servAndDown
+	case serverIdle && dirtyDowns:
+		return idleAndDown
+	case zipInProgress:
+		return zippingFiles
+	case servingInProgress:
+		return servingFiles
+	case serverIdle:
+		return idleServer
+	case dirtyDowns:
+		return partialDowns
+	default:
+		return clean
+	}
+}
+
+func (m MainModel) getMsgAndCmd(s appShutdownState) (string, tea.Cmd) {
+	switch s {
+	case clean: // no-op
+	case servAndDown:
+		return "Are you sure, it will close all the active server connections, and will delete all the partial downloads.",
+			tea.Batch(m.localSpace.send.shutdownServer(true), m.extensionSpace.download.deletePartailDownloads())
+	case idleAndDown:
+		return "Are you sure, it will stop the idle server, and will delete all the partial downloads.",
+			tea.Batch(m.localSpace.send.shutdownServer(true), m.extensionSpace.download.deletePartailDownloads())
+	case zipAndDown:
+		return "Are you sure, it will stop the file zipping, and will delete all the partial downloads.",
+			tea.Batch(m.localSpace.processFiles.stopZipping(true), m.extensionSpace.download.deletePartailDownloads())
+	case idleServer:
+		return "", m.localSpace.send.shutdownServer(true)
+	case zippingFiles:
+		return "Do you want to stop zipping the files, progress will be lost.",
+			m.localSpace.processFiles.stopZipping(true)
+	case servingFiles:
+		return "The server instance is being shutdown forcefully, all active downloads will abruptly halt.",
+			m.localSpace.send.shutdownServer(true)
+	case partialDowns:
+		return "All the partially downloaded files will be deleted from the disk. If you want them to complete them make sure to keep the app running.",
+			m.extensionSpace.download.deletePartailDownloads()
+	}
+	return "", nil
 }
 
 func shutdownBgTasks() {

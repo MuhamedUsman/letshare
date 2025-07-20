@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	appConfDir  = ".letshare"
-	appConfFile = "config.toml"
+	MaxConcurrentDownloads = 10
+	appConfDir             = ".letshare"
+	appConfFile            = "config.toml"
 )
 
 var (

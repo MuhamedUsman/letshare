@@ -104,6 +104,7 @@ func initialDirNavModel() dirNavModel {
 		curDirPath:        wd,
 		dirList:           newDirList(),
 		prevSelectedStack: newItemSelectionStack(),
+		disableKeymap:     true,
 	}
 }
 
@@ -268,8 +269,8 @@ func newDirList() list.Model {
 	l.Styles.HelpStyle = l.Styles.HelpStyle.Padding(1, 0, 0, 1)
 
 	l.Styles.Title = l.Styles.Title.
-		Background(highlightColor).
-		Foreground(subduedHighlightColor).
+		Background(grayColor).
+		Foreground(highlightColor).
 		Italic(true)
 
 	l.Styles.StatusBar = l.Styles.StatusBar.
