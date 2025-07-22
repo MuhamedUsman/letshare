@@ -71,13 +71,7 @@ archives:
 # ----------------------------------------------------------------------------------------------------------------------
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
-      - '^chore:'
+  disable: true
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -186,7 +180,6 @@ winget:
     publisher_url: "{{ .Env.GITHUB_USER_PROFILE }}"
     publisher_support_url: '{{ .Env.REPOSITORY_URL }}/issues'
     license_url: '{{ .Env.REPOSITORY_URL }}/blob/main/LICENSE'
-    release_notes: '{{ .Changelog }}'
     tags:
       - file-sharing
       - lan
