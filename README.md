@@ -1,5 +1,5 @@
 <br><div align="center">
-  <img width="400" alt="Asset 1@4x" src="https://github.com/user-attachments/assets/0d7dd28f-4f78-4b8e-beaa-a37c06917548" style="pointer-events: none;"/><br><br>
+  <img width="500" src="https://github.com/user-attachments/assets/9c3e3a63-4066-4099-be76-b2fe3139dc2b" alt="Letshare Logo"/><br><br>
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/badge/OS-linux%2C%20windows%2C%20macOS-0078D4" alt="OS"></a>
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/github/v/release/MuhamedUsman/letshare" alt="Latest Release"></a>
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/github/downloads/MuhamedUsman/letshare/total" alt="downloads"></a>
@@ -10,6 +10,12 @@ Letshare is a terminal-based file sharing application that creates a local web s
 <br><br>
 
 ![Letshare](https://github.com/user-attachments/assets/153408e9-a0f9-4e9a-ba76-7ffb2948102b)
+
+## Who is it for?
+Letshare is built for anyone who wants to share files fast, hassle-free, and locally.
+- **Developers** — Instantly share your build artifacts or test files with teammates without uploading to the cloud
+- **Teachers & Professors** — Distribute course material to students in a lab or classroom, all connected to the same Wi-Fi or LAN.
+- **Teams on the same network** — Share resources in offices, co-working spaces, or home labs without dealing with network drives or external servers.
 
 ## Features
 - Instant file sharing over local network
@@ -29,13 +35,6 @@ Letshare is a terminal-based file sharing application that creates a local web s
 - Why port `80`, so users don't have to write `:port` when they write the URL
 
 ## Installation
-<details>
-  <summary>Windows</summary><br>
-  
-  ```powershell
-  winget install MuhamedUsman.Letshare
-  ```
-</details>
 <details>
   <summary>Linux</summary>
   
@@ -119,6 +118,15 @@ Letshare is a terminal-based file sharing application that creates a local web s
   sudo pacman -U Letshare_1.0.0_linux_arm64.pkg.tar.zst
   ```
 </details>
+
+<details>
+  <summary>Windows</summary><br>
+  
+  ```powershell
+  winget install MuhamedUsman.Letshare
+  ```
+</details>
+
 <details>
   <summary>macOS</summary><br>
 
@@ -136,7 +144,7 @@ Letshare is a terminal-based file sharing application that creates a local web s
 - Navigate to the directory you want to share
 - Select files/folders using the TUI
 - Share the displayed URL with others on your network
-- Access files via TUI or Browser at http://[instance-name].local or the IP address
+- Access files via TUI or Browser at `http://[instance-name].local` or the IP address
 
 ## Caveats
 - Older Android devices (pre-Android 12) have problems resolving multicast DNS (.local domains). 
@@ -146,6 +154,9 @@ Letshare is a terminal-based file sharing application that creates a local web s
 - Some download managers (including IDM) may not properly resolve .local domains due to 
   limited mDNS support in their networking implementation. Using direct IP addresses 
   ensures reliable downloads across different client applications.
+- If you're connected to a VPN, Letshare may bind to your VPN-assigned IP (e.g., `172.x.x.x`),
+  which is not accessible to devices on your local network,
+  make sure you're disconnected from the VPN before starting the server.
 
 ## Extras
 <details>
@@ -202,4 +213,4 @@ Feedback and contributions are always welcome and appreciated!
 
 ## License
 This product is distributed under [MIT license](https://github.com/MuhamedUsman/letshare/blob/main/LICENSE).<br>
-Free for Comercial and Non-Comercial Use.
+_Free for Commercial and Non-Commercial Use._
