@@ -6,10 +6,23 @@
 </div><br>
 
 ## About
-Letshare is a terminal-based file sharing application that creates a local web server and uses mDNS for automatic network discovery. Share files and folders across your local network with an intuitive TUI interface - no complex setup required.
+Letshare is a terminal-based file sharing application that creates a local web server and uses mDNS for automatic network discovery. Easily share files and folders across your local network using a simple, intuitive TUI — no complex setup needed.
 <br><br>
 
 ![Letshare](https://github.com/user-attachments/assets/153408e9-a0f9-4e9a-ba76-7ffb2948102b)
+
+## Features
+- Instant file sharing over local network
+- Access via IP or .local hostname
+- Automatic peer discovery with mDNS
+- Intuitive TUI interface
+- Runs locally — no internet required
+- Cross-platform support (Linux, Windows, macOS)
+- Mobile-friendly with QR codes
+- Includes Preferences section for customized behaviour
+- Built-in download manager with pause, resume, delete options
+- Automatically zip directories (with or without compression) before sharing
+- Graceful shutdown — the server continues serving active downloads even after the server is shut down
 
 ## Requirements
 - **Administrator/Root privileges** (required to bind to port `80`)
