@@ -120,8 +120,8 @@ nfpms:
 # ----------------------------------------------------------------------------------------------------------------------
 
 release:
-  draft: true
-  use_existing_draft: true
+  draft: false
+  use_existing_draft: false
   replace_existing_artifacts: true
   discussion_category_name: General
   mode: replace
