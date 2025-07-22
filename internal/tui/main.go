@@ -46,7 +46,7 @@ var (
 type eventCapturer interface {
 	// CapturesKeyEvent returns true if the implementation captures the given key event.
 	// When true is returned, the application typically should consider the event "consumed",
-	// and must be passed to the child component.
+	// and must be passed to the child component, that returns true.
 	//
 	// Example:
 	//  case tea.KeyMsg:

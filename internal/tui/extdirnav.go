@@ -574,7 +574,7 @@ func (m *extDirNavModel) confirmSend() tea.Cmd {
 		fileStr = fmt.Sprintf("%d File/s", files)
 	}
 	if dirs > 0 && files > 0 {
-		space = " and "
+		space = " & "
 	}
 	selBtn := positive
 	header := "PROCEED?"

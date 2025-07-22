@@ -871,7 +871,7 @@ func (m downloadModel) deletePartailDownloads() tea.Cmd {
 			if d.state == downloading {
 				_ = d.Close()
 				d.filename = d.Filename() // save the filename to delete it later
-				// we don't decrement active downloads here, as that may start queued downloads
+				// we don't decrement active downloads here, doing so may start queued downloads
 				d.DownloadTracker = nil
 			}
 			d.mu.Unlock()

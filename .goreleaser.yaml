@@ -1,6 +1,3 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
 # The lines below are called `modelines`. See `:help modeline`
 # Feel free to remove those if you don't want/need to use them.
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
@@ -10,14 +7,17 @@ version: 2
 
 project_name: Letshare
 
+report_sizes: true
+
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 builds:
-  - env:
-      - CGO_ENABLED=0
+  - ldflags:
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - windows
@@ -25,10 +25,41 @@ builds:
     goarch:
       - amd64
       - arm64
+    hooks:
+      pre:
+        # this hook runs after each build, but this hacks work, running this as global before hook
+        # gives an error, because the dist dir is not clean, so it raises run it with clean flag
+        - mkdir -p dist/signatures
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+gomod:
+  proxy: true
+  env:
+    - GOPROXY=direct,https://proxy.golang.org
+    - GOSUMDB=sum.golang.org
+  mod: mod
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+signs:
+  - artifacts: all
+    signature: '/signatures/{{ base .Env.artifact }}.sig'
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+upx:
+  - enabled: '{{ .Env.UPX_ENABLED }}'
+    goos: [linux, windows] # Filter by GOOS.
+    goarch: [arm, amd64]  # Filter by GOARCH.
+    compress: best
+    lzma: true
+    brute: true
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 archives:
   - formats: [tar.gz]
-    # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -36,21 +67,161 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
     format_overrides:
       - goos: windows
         formats: [zip]
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
+      - '^docs:'
+      - '^test:'
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+# .goreleaser.yaml - nFPM section
+nfpms:
+  - # Basic package info
+    vendor: '{{ .Env.GITHUB_USERNAME }}'
+    homepage: '{{ .Env.REPOSITORY_URL }}'
+    maintainer: '{{ .Env.GITHUB_USERNAME }} <{{ .Env.GITHUB_EMAIL }}>'
+    license: '{{ .Env.LICENSE }}'
+    formats:
+      - apk
+      - deb
+      - rpm
+      - archlinux
+    dependencies:
+      - avahi-daemon
+      - avahi-utils
+    recommends:
+      - avahi-autoipd
+    scripts:
+      postinstall: 'scripts/post-install-linux.sh'
+      preremove: 'scripts/pre-remove-linux.sh'
+    overrides:
+      deb:
+        dependencies:
+          - avahi-daemon
+          - libc6
+      rpm:
+        dependencies:
+          - avahi
+          - glibc
+      apk:
+        dependencies:
+          - avahi
+          - avahi-tools
+          - musl
+      archlinux:
+        dependencies:
+          - avahi
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 release:
-  footer: >-
+  draft: true
+  use_existing_draft: true
+  replace_existing_artifacts: true
+  discussion_category_name: General
+  mode: replace
+  header: |
+    # {{ .ProjectName }} {{ .Version }}
+    
+    🎉 **First Stable Release**
 
+  footer: |
+    
     ---
+    
+    **Feedback and contributions are much appreciated!**
+    
+    Built with ❤️ using Go
 
-    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+# ----------------------------------------------------------------------------------------------------------------------
+
+# Homebrew Casks configuration
+homebrew_casks:
+  - repository:
+      owner: '{{ .Env.GITHUB_USERNAME }}'
+      name: homebrew-letshare
+      branch: main
+      pull_request:
+        enabled: true
+        draft: false
+    description: '{{ .Env.DESCRIPTION }}'
+    homepage: '{{ .Env.REPOSITORY_URL }}'
+    license: '{{ .Env.LICENSE }}'
+    commit_author:
+      name: '{{ .Env.GITHUB_USERNAME }}'
+      email: '{{ .Env.GITHUB_EMAIL }}'
+      signing:
+        enabled: true
+    commit_msg_template: '{{ .ProjectName }}: {{ .Tag }}'
+    url:
+      using: ':homebrew_curl'
+    caveats: |
+        This application requires:
+        1. Administrator privileges to bind to port 80
+        2. This application uses mDNS for automatic network discovery & publishing
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/{{ .ProjectName }}"]
+          end
+    skip_upload: '{{ .Env.SKIP_UPLOAD }}'
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+# .goreleaser.yaml - Winget section
+winget:
+  - publisher: '{{ .Env.GITHUB_USERNAME }}'
+    package_identifier: MuhamedUsman.Letshare
+    short_description: '{{ .Env.DESCRIPTION }}'
+    description: >-
+      A terminal-based file sharing application that creates a local server on port 80 
+      and uses mDNS for automatic network discovery. Share files easily across your LAN 
+      with a simple TUI interface.
+    license: '{{ .Env.LICENSE }}'
+    homepage: "{{ .Env.REPOSITORY_URL }}"
+    publisher_url: "{{ .Env.GITHUB_USER_PROFILE }}"
+    publisher_support_url: '{{ .Env.REPOSITORY_URL }}/issues'
+    license_url: '{{ .Env.REPOSITORY_URL }}/blob/main/LICENSE'
+    release_notes: "{{.Changelog}}"
+    tags:
+      - file-sharing
+      - lan
+      - tui
+      - terminal
+      - mdns
+      - network
+      - cli
+      - golang
+    installation_notes: |
+      This application requires:
+      1. Administrator privileges to bind to port 80
+      2. Windows firewall may need to be configured to allow the application
+      3. Apple Bonjour service (automatically installed as dependency) for mDNS network discovery
+    dependencies:
+      - package_identifier: Apple.Bonjour
+        minimum_version: 3.1.0.1
+    commit_author:
+      name: '{{ .Env.GITHUB_USERNAME }}'
+      email: '{{ .Env.GITHUB_EMAIL }}'
+    commit_msg_template: '{{ .PackageIdentifier }}: {{ .Tag }}'
+    repository:
+      owner: microsoft
+      name: winget-pkgs
+      branch: '{{ .ProjectName }}-{{ .Version }}'
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: '{{ .Env.SKIP_UPLOAD }}'
