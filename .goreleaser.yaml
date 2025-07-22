@@ -210,7 +210,7 @@ winget:
       email: '{{ .Env.GITHUB_EMAIL }}'
     commit_msg_template: '{{ .PackageIdentifier }}: {{ .Tag }}'
     repository:
-      owner: microsoft
+      owner: '{{ .Env.GITHUB_USERNAME }}'
       name: winget-pkgs
       branch: '{{ .ProjectName }}-{{ .Version }}'
       pull_request:
