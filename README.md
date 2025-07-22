@@ -42,52 +42,44 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ```bash
   # Download the .deb file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.deb
-
-  # Install the package
-  sudo dpkg -i Letshare_1.0.0_linux_amd64.deb
-  sudo apt-get install -f  # Fix any dependency issues
+  # Install the package with automatic dependency resolution
+  sudo apt install ./Letshare_1.0.0_linux_amd64.deb
   ```
   
   ### Debian/Ubuntu (arm64)
   ```bash
   # Download the .deb file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.deb
-
-  # Install the package
-  sudo dpkg -i Letshare_1.0.0_linux_arm64.deb
-  sudo apt-get install -f  # Fix any dependency issues
+  # Install the package with automatic dependency resolution
+  sudo apt install ./Letshare_1.0.0_linux_arm64.deb
   ```
   
   ### Red Hat/Fedora/CentOS (amd64)
   ```bash
   # Download the .rpm file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.rpm
-
-  # Install the package
-  sudo rpm -i Letshare_1.0.0_linux_amd64.rpm
+  # Install the package with automatic dependency resolution
+  sudo dnf install Letshare_1.0.0_linux_amd64.rpm  # Fedora/RHEL 8+
   # or
-  sudo dnf install Letshare_1.0.0_linux_amd64.rpm  # Fedora
-  sudo yum install Letshare_1.0.0_linux_amd64.rpm  # CentOS/RHEL
+  sudo yum install Letshare_1.0.0_linux_amd64.rpm  # CentOS/RHEL 7
   ```
   
   ### Red Hat/Fedora/CentOS (arm64)
   ```bash
   # Download the .rpm file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.rpm
-
-  # Install the package
-  sudo rpm -i Letshare_1.0.0_linux_arm64.rpm
+  # Install the package with automatic dependency resolution
+  sudo dnf install Letshare_1.0.0_linux_arm64.rpm  # Fedora/RHEL 8+
   # or
-  sudo dnf install Letshare_1.0.0_linux_arm64.rpm  # Fedora
-  sudo yum install Letshare_1.0.0_linux_arm64.rpm  # CentOS/RHEL
+  sudo yum install Letshare_1.0.0_linux_arm64.rpm  # CentOS/RHEL 7
   ```
   
   ### Alpine Linux (amd64)
   ```bash
   # Download the .apk file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.apk
-
-  # Install the package
+  # Install dependencies first, then the package
+  sudo apk add avahi avahi-tools
   sudo apk add --allow-untrusted Letshare_1.0.0_linux_amd64.apk
   ```
   
@@ -95,8 +87,8 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ```bash
   # Download the .apk file from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.apk
-
-  # Install the package
+  # Install dependencies first, then the package
+  sudo apk add avahi avahi-tools
   sudo apk add --allow-untrusted Letshare_1.0.0_linux_arm64.apk
   ```
   
@@ -104,8 +96,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ```bash
   # Download the package from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.pkg.tar.zst
-
-  # Install the package
+  # Install the package with automatic dependency resolution
   sudo pacman -U Letshare_1.0.0_linux_amd64.pkg.tar.zst
   ```
   
@@ -113,9 +104,32 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ```bash
   # Download the package from releases
   wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.pkg.tar.zst
-
-  # Install the package
+  # Install the package with automatic dependency resolution
   sudo pacman -U Letshare_1.0.0_linux_arm64.pkg.tar.zst
+  ```
+
+  ### Manual Binary Installation (All Distributions)
+  If you prefer not to use package managers or encounter dependency issues:
+  ```bash
+  # Install mDNS dependencies manually based on your distribution:
+  
+  # Debian/Ubuntu:
+  sudo apt update && sudo apt install avahi-daemon avahi-utils
+  
+  # Red Hat/Fedora/CentOS:
+  sudo dnf install avahi avahi-tools  # or use yum on older systems
+  
+  # Alpine:
+  sudo apk add avahi avahi-tools
+  
+  # Arch:
+  sudo pacman -S avahi
+  
+  # Then download and install the binary:
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_Linux_x86_64.tar.gz
+  tar -xzf Letshare_Linux_x86_64.tar.gz
+  sudo mv Letshare /usr/local/bin/
+  sudo chmod +x /usr/local/bin/Letshare
   ```
 </details>
 
