@@ -39,4 +39,4 @@ goreleaser/snapshot:
 ## goreleaser/release: release it to the world
 .PHONY: goreleaser/release
 goreleaser/release:
-	goreleaser release --clean
+	goreleaser release
