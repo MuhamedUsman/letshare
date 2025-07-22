@@ -466,7 +466,7 @@ func customExtReceiveTableHelp(show bool) *lipTable.Table {
 			{"enter", "select/deselect at cursor"},
 			{"shift+↓/↑", "make/undo selection"},
 			{"ctrl+a", "select/deselect all"},
-			{"ctrl+s", "send selected files"},
+			{"ctrl+s", "save selected files"},
 			{"esc", "exit filtering"},
 			{"/", "filter"},
 			{"?", "hide help"},
