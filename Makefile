@@ -31,7 +31,12 @@ build/app:
 	CGO_ENABLED=0; \
 	go build -ldflags="-s -w -X main.version=${VERSION}" .
 
-## build/goreleaser-test: build the goreleaser test binary
-.PHONY: build/goreleaser-test
-build/goreleaser-test:
+## goreleaser/snapshot: build the goreleaser test dist
+.PHONY: goreleaser/snapshot
+goreleaser/snapshot:
 	goreleaser release --snapshot --clean --skip=publish
+
+## goreleaser/release: release it to the world
+.PHONY: goreleaser/release
+goreleaser/release:
+	goreleaser release --clean --skip=publish
