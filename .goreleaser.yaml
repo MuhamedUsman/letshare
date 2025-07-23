@@ -179,7 +179,7 @@ winget:
     license: '{{ .Env.LICENSE }}'
     homepage: "{{ .Env.REPOSITORY_URL }}"
     publisher_url: "{{ .Env.GITHUB_USER_PROFILE }}"
-    publisher_support_url: '{{ .Env.REPOSITORY_URL }}/issues'
+    publisher_support_url: '{{ .Env.REPOSITORY_URL }}/issues/new'
     license_url: '{{ .Env.REPOSITORY_URL }}/blob/main/LICENSE'
     tags:
       - file-sharing
@@ -201,6 +201,8 @@ winget:
     commit_author:
       name: '{{ .Env.GITHUB_USERNAME }}'
       email: '{{ .Env.GITHUB_EMAIL }}'
+      signing:
+        enabled: true
     commit_msg_template: '{{ .PackageIdentifier }}: {{ .Tag }}'
     repository:
       owner: '{{ .Env.GITHUB_USERNAME }}'
