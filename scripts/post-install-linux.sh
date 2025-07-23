@@ -3,7 +3,7 @@
 # Set capabilities to allow binding to port 80 without root
 if command -v setcap >/dev/null 2>&1; then
     echo "Setting capabilities for port 80 binding..."
-    setcap 'cap_net_bind_service=+ep' /usr/bin/Letshare || {
+    setcap 'cap_net_bind_service=+ep' /usr/bin/letshare || {
         echo "Warning: Could not set capabilities. You may need to run as root to bind to port 80."
     }
 fi
