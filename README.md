@@ -158,6 +158,10 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   # Install Letshare
   brew install --cask letshare
   ```
+
+For macOS users you may need to allow `letshare` access to port `80`, I can't help you with that much because I don't own a mac, I can give you some un-tested solution, but I really don't want to do that. 
+
+So, if you do find a solution where user don't have to write `sudo` each time they run this app, feel free to open an issue and document your solution. It may help non-technical users
 </details>
 
 ## Quick Start
