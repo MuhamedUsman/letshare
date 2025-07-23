@@ -10,7 +10,6 @@ import (
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/MuhamedUsman/letshare/internal/webui"
 	"hash/crc32"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -108,6 +107,9 @@ func (s *Server) StartServer(filePaths ...string) error {
 
 	s.setFilePaths(filePaths...)
 	defer func() {
+		s.mu.Lock()
+		s.ActiveDowns = 0
+		s.mu.Unlock()
 		s.deleteTempFiles()
 		close(s.log.logCh)
 		close(s.log.activeDownCh)
@@ -209,7 +211,7 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range s.FilePaths {
 		stat, err := os.Lstat(v)
 		if err != nil {
-			s.serverErrorResponse(w, r, err)
+			s.serverErrorResponse(w, r)
 			return
 		}
 		fsInfo := &domain.FileInfo{
@@ -229,7 +231,7 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Accept") == "application/json" {
 		if err := s.writeJSON(w, envelop{"fileIndexes": fsInfos}, http.StatusOK, nil); err != nil {
-			s.serverErrorResponse(w, r, err)
+			s.serverErrorResponse(w, r)
 		}
 	} else {
 		data := indexFileTemplateData{
@@ -239,7 +241,7 @@ func (s *Server) indexFilesHandler(w http.ResponseWriter, r *http.Request) {
 			Files:        fsInfos,
 		}
 		if err := s.render(w, http.StatusOK, "fileIndexes.tmpl.html", data); err != nil {
-			s.serverErrorResponse(w, r, err)
+			s.serverErrorResponse(w, r)
 			return
 		}
 		if logReq {
@@ -312,7 +314,7 @@ func (s *Server) stopHandler(w http.ResponseWriter, r *http.Request) {
 			msg := "Shutdown initiated, it may take maximum of 7 seconds to shutdown."
 			s.log.info(msg)
 			if err := s.writeJSON(w, envelop{"status": msg}, http.StatusAccepted, nil); err != nil {
-				s.serverErrorResponse(w, r, err)
+				s.serverErrorResponse(w, r)
 			}
 			return
 		}
@@ -340,9 +342,7 @@ func (s *Server) deleteTempFiles() {
 	s.log.info("Deleting temporary files")
 	for _, p := range s.FilePaths {
 		if strings.HasPrefix(p, os.TempDir()) {
-			if err := os.Remove(p); err != nil {
-				slog.Error("deleting temp files", "err", err)
-			}
+			_ = os.Remove(p)
 		}
 	}
 }
