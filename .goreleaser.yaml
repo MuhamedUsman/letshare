@@ -93,8 +93,8 @@ nfpms:
     recommends:
       - avahi-autoipd
     scripts:
-      postinstall: 'scripts/post-install-linux.sh'
-      preremove: 'scripts/pre-remove-linux.sh'
+      postinstall: scripts/post-install-linux.sh
+      preremove: scripts/pre-remove-linux.sh
     overrides:
       deb:
         dependencies:
@@ -120,7 +120,7 @@ release:
   use_existing_draft: false
   replace_existing_artifacts: true
   discussion_category_name: General
-  mode: replace
+  mode: keep-existing
   header: |
     # {{ .ProjectName }} {{ .Version }}
     
@@ -173,8 +173,8 @@ winget:
     package_identifier: MuhamedUsman.Letshare
     short_description: '{{ .Env.DESCRIPTION }}'
     description: >-
-      A terminal-based file sharing application that creates a local server on port 80 
-      and uses mDNS for automatic network discovery. Share files easily across your LAN 
+      A terminal-based file sharing application that creates a local server on port 80
+      and uses mDNS for automatic network discovery. Share files easily across your LAN
       with a simple TUI interface.
     license: '{{ .Env.LICENSE }}'
     homepage: "{{ .Env.REPOSITORY_URL }}"
@@ -203,6 +203,7 @@ winget:
       email: '{{ .Env.GITHUB_EMAIL }}'
       signing:
         enabled: true
+        program: gpg
     commit_msg_template: '{{ .PackageIdentifier }}: {{ .Tag }}'
     repository:
       owner: '{{ .Env.GITHUB_USERNAME }}'
