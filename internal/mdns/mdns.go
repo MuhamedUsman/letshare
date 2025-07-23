@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/network"
 	"github.com/betamos/zeroconf"
-	"log/slog"
 	"maps"
 	"net/netip"
 	"sync"
@@ -93,9 +92,7 @@ func (r *MDNS) Publish(ctx context.Context, instance, hostname, username string,
 	}
 
 	defer func() {
-		if err = r.pub.Close(); err != nil {
-			slog.Error("closing mDNS publisher", "error", err)
-		}
+		_ = r.pub.Close()
 	}()
 
 	<-ctx.Done()
@@ -138,9 +135,7 @@ func (r *MDNS) Browse(ctx context.Context) error {
 	}
 
 	defer func() {
-		if err = r.bro.Close(); err != nil {
-			slog.Error("closing mDNS browser", "error", err)
-		}
+		_ = r.bro.Close()
 	}()
 
 	<-ctx.Done()

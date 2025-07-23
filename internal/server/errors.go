@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log/slog"
 	"net/http"
 )
 
@@ -10,22 +9,19 @@ func (s *Server) errorResponse(w http.ResponseWriter, r *http.Request, status in
 	preferJSON := r.Header.Get("Accept") == "application/json"
 	if preferJSON {
 		if err := s.writeJSON(w, data, status, nil); err != nil {
-			slog.Error(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		return
 	}
 	w.WriteHeader(status)
 	if _, err := w.Write([]byte(message.(string))); err != nil {
-		slog.Error(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 
-func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
+func (s *Server) serverErrorResponse(w http.ResponseWriter, r *http.Request) {
 	message := "the server encountered a problem and could not process your request"
 	s.errorResponse(w, r, http.StatusInternalServerError, message)
-	slog.Error(err.Error())
 }
 
 func (s *Server) notFoundResponse(w http.ResponseWriter, r *http.Request) {

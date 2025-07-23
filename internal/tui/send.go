@@ -519,10 +519,7 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				return alertDialogMsg{
 					header: "GRACEFUL SHUTDOWN!",
-					body: fmt.Sprintf(
-						"Shutting down server, “%d” active download connections will be served, but no new requests will be accepted.",
-						m.server.ActiveDowns,
-					),
+					body:   "Shutting down server, active download connections will be served, but no new requests will be accepted.",
 				}
 			}
 			return serverStartupErrMsg(errMsg{

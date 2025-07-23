@@ -12,7 +12,6 @@ import (
 	lipTable "github.com/charmbracelet/lipgloss/table"
 	"github.com/dustin/go-humanize"
 	"github.com/mattn/go-runewidth"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -807,7 +806,6 @@ func (m downloadModel) downloadFile(fd *fileDownload) tea.Cmd {
 			err = unwrapErr(err)
 			em.errHeader = "DOWNLOAD FAILED"
 			em.errStr = fmt.Sprintf("Failed to download file, %s.", err.Error())
-			log.Println(err.Error())
 		}
 
 		fd.mu.Lock()
