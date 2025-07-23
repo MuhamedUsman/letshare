@@ -36,6 +36,13 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
 
 ## Installation
 <details>
+  <summary>Go</summary>
+
+  ```go
+  go install github.com/MuhamedUsman/letshare
+  ```
+</details>
+<details>
   <summary>Linux</summary>
   
   ### Debian/Ubuntu (amd64)
@@ -173,6 +180,15 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   make sure you're disconnected from the VPN before starting the server.
 
 ## Extras
+<details>
+  <summary>Terminal Colors</summary>
+  For Linux and macOS users if you're not seeing true colors;<br><br>
+
+  ```bash
+  echo 'export COLORTERM=truecolor' >> ~/.profile
+  ```
+  Then restart your terminal.
+</details>
 <details>
   <summary>Terminal Size</summary>
   
