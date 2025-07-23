@@ -163,7 +163,7 @@ homebrew_casks:
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
              system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/{{ .ProjectName }}"]
           end
-    skip_upload: true
+    skip_upload: false
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -215,4 +215,4 @@ winget:
           owner: microsoft
           name: winget-pkgs
           branch: master
-    skip_upload: true
+    skip_upload: false
