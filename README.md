@@ -41,7 +41,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Debian/Ubuntu (amd64)
   ```bash
   # Download the .deb file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.deb
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.deb
   # Install the package with automatic dependency resolution
   sudo apt install ./Letshare_1.0.0_linux_amd64.deb
   ```
@@ -49,7 +49,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Debian/Ubuntu (arm64)
   ```bash
   # Download the .deb file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.deb
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.deb
   # Install the package with automatic dependency resolution
   sudo apt install ./Letshare_1.0.0_linux_arm64.deb
   ```
@@ -57,7 +57,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Red Hat/Fedora/CentOS (amd64)
   ```bash
   # Download the .rpm file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.rpm
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.rpm
   # Install the package with automatic dependency resolution
   sudo dnf install Letshare_1.0.0_linux_amd64.rpm  # Fedora/RHEL 8+
   # or
@@ -67,7 +67,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Red Hat/Fedora/CentOS (arm64)
   ```bash
   # Download the .rpm file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.rpm
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.rpm
   # Install the package with automatic dependency resolution
   sudo dnf install Letshare_1.0.0_linux_arm64.rpm  # Fedora/RHEL 8+
   # or
@@ -77,7 +77,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Alpine Linux (amd64)
   ```bash
   # Download the .apk file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.apk
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.apk
   # Install dependencies first, then the package
   sudo apk add avahi avahi-tools
   sudo apk add --allow-untrusted Letshare_1.0.0_linux_amd64.apk
@@ -86,7 +86,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Alpine Linux (arm64)
   ```bash
   # Download the .apk file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.apk
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.apk
   # Install dependencies first, then the package
   sudo apk add avahi avahi-tools
   sudo apk add --allow-untrusted Letshare_1.0.0_linux_arm64.apk
@@ -95,7 +95,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Arch Linux (amd64)
   ```bash
   # Download the package from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_amd64.pkg.tar.zst
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.pkg.tar.zst
   # Install the package with automatic dependency resolution
   sudo pacman -U Letshare_1.0.0_linux_amd64.pkg.tar.zst
   ```
@@ -103,7 +103,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Arch Linux (arm64)
   ```bash
   # Download the package from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_1.0.0_linux_arm64.pkg.tar.zst
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.pkg.tar.zst
   # Install the package with automatic dependency resolution
   sudo pacman -U Letshare_1.0.0_linux_arm64.pkg.tar.zst
   ```
@@ -126,7 +126,7 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   sudo pacman -S avahi
   
   # Then download and install the binary:
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/Letshare_Linux_x86_64.tar.gz
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_Linux_x86_64.tar.gz
   tar -xzf Letshare_Linux_x86_64.tar.gz
   sudo mv Letshare /usr/local/bin/
   sudo chmod +x /usr/local/bin/Letshare
