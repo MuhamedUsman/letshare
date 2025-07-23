@@ -9,7 +9,7 @@
 Letshare is a terminal-based file sharing application that creates a local web server and uses mDNS for automatic network discovery. Easily share files and folders across your local network using a simple, intuitive TUI — no complex setup needed.
 <br><br>
 
-![Letshare](https://github.com/user-attachments/assets/153408e9-a0f9-4e9a-ba76-7ffb2948102b)
+![Letshare](https://github.com/user-attachments/assets/882766da-3bff-4e74-b511-6c2580c84daa)
 
 ## Who is it for?
 Letshare is built for anyone who wants to share files fast, hassle-free, and locally.
