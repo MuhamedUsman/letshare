@@ -54,6 +54,7 @@ func main() {
 	_, err := tea.NewProgram(
 		tui.InitialMainModel(finalErrCh),
 		tea.WithoutBracketedPaste(),
+		tea.WithAltScreen(),
 	).Run()
 	if err != nil {
 		err = <-finalErrCh
