@@ -53,7 +53,6 @@ func main() {
 	finalErrCh := make(chan error, 1)
 	_, err := tea.NewProgram(
 		tui.InitialMainModel(finalErrCh),
-		tea.WithAltScreen(),
 		tea.WithoutBracketedPaste(),
 	).Run()
 	if err != nil {
