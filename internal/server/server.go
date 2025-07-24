@@ -54,6 +54,15 @@ func (t tlog) relayActiveDown(n int, force bool) {
 	}
 }
 
+type ShutdownErr struct {
+	Base        error
+	ActiveDowns int
+}
+
+func (e ShutdownErr) Error() string {
+	return fmt.Sprintf("server shutdown error: %v, active downs: %d", e.Base, e.ActiveDowns)
+}
+
 type Server struct {
 	// file paths to be served, [K: accessID, V: filepath]
 	FilePaths map[uint32]string
@@ -119,7 +128,9 @@ func (s *Server) StartServer(filePaths ...string) error {
 	errChan := s.listenAndShutdown(server)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		s.StopCtxCancel()
-		return err // caller has context
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return ShutdownErr{err, s.ActiveDowns}
 	}
 	s.log.info("Shutting down server", "Addr", server.Addr)
 	if err = <-errChan; err != nil {

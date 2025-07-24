@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
@@ -47,10 +48,11 @@ func main() {
 		}
 	})
 
+	fmt.Print("\033]0;Letshare\007")
+
 	finalErrCh := make(chan error, 1)
 	_, err := tea.NewProgram(
 		tui.InitialMainModel(finalErrCh),
-		tea.WithAltScreen(),
 		tea.WithoutBracketedPaste(),
 	).Run()
 	if err != nil {

@@ -514,12 +514,18 @@ func (m sendModel) publishInstanceAndStartServer() tea.Cmd {
 			err = m.server.StartServer(m.files...)
 		})
 
-		// DeadlineExceeded: In case of graceful shutdown & active downloads
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			var ser server.ShutdownErr
+			if errors.As(err, &ser) {
+				if ser.ActiveDowns == 0 {
+					return nil
+				}
 				return alertDialogMsg{
 					header: "GRACEFUL SHUTDOWN!",
-					body:   "Shutting down server, active download connections will be served, but no new requests will be accepted.",
+					body: fmt.Sprintf(
+						"Shutting down server, %d active download connections will be served, but no new requests will be accepted.",
+						ser.ActiveDowns,
+					),
 				}
 			}
 			return serverStartupErrMsg(errMsg{
