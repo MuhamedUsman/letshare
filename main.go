@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/MuhamedUsman/letshare/internal/bgtask"
 	"github.com/MuhamedUsman/letshare/internal/mdns"
 	"github.com/MuhamedUsman/letshare/internal/tui"
@@ -46,6 +47,8 @@ func main() {
 			os.Exit(1)
 		}
 	})
+
+	fmt.Print("\033]0;Letshare\007")
 
 	finalErrCh := make(chan error, 1)
 	_, err := tea.NewProgram(
