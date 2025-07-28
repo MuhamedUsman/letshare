@@ -40,7 +40,7 @@ gomod:
 # ----------------------------------------------------------------------------------------------------------------------
 
 signs:
-  - artifacts: all
+  - artifacts: checksum
     signature: '/signatures/{{ base .Env.artifact }}.sig'
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -124,9 +124,12 @@ release:
   header: |
     # {{ .ProjectName }} {{ .Version }}
     
-    🎉 **First Stable Release**
+     🐛 **Bug Fixes & Improvements**
 
   footer: |
+    ## What's Changed
+    - Fixed server shutdown issues with active downloads
+    - Prevented app hanging when exiting with ongoing transfers
     
     ---
     
@@ -154,9 +157,11 @@ homebrew_casks:
     url:
       using: ':homebrew_curl'
     caveats: |
-        This application requires:
-        1. Administrator privileges to bind to port 80
-        2. This application uses mDNS for automatic network discovery & publishing
+      This application requires:
+      1. Administrator privileges to bind to port 80 (run with 'sudo letshare' if needed)
+      2. mDNS support for automatic network discovery
+      
+      For setup help, see: {{ .Env.REPOSITORY_URL }}#installation
     hooks:
       post:
         install: |
@@ -193,8 +198,10 @@ winget:
     installation_notes: |
       This application requires:
       1. Administrator privileges to bind to port 80
-      2. Windows firewall may need to be configured to allow the application
-      3. Apple Bonjour service (automatically installed as dependency) for mDNS network discovery
+      2. Windows firewall configuration may be needed
+      3. Apple Bonjour service for mDNS network discovery
+      
+      Accept the pop-up that appears on the first run OR run as Administrator if you encounter port binding issues.
     dependencies:
       - package_identifier: Apple.Bonjour
         minimum_version: 3.1.0.1

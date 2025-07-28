@@ -127,14 +127,13 @@ func (s *Server) StartServer(filePaths ...string) error {
 	s.log.info("Starting server", "Addr", server.Addr)
 	errChan := s.listenAndShutdown(server)
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		s.StopCtxCancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		return ShutdownErr{err, s.ActiveDowns}
 	}
 	s.log.info("Shutting down server", "Addr", server.Addr)
 	if err = <-errChan; err != nil {
-		return fmt.Errorf("server shutting down: %w", err)
+		return ShutdownErr{err, s.ActiveDowns}
 	}
 	return nil
 }
