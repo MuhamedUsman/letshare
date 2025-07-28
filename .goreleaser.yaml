@@ -30,15 +30,6 @@ builds:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-gomod:
-  proxy: true
-  env:
-    - GOPROXY=direct,https://proxy.golang.org
-    - GOSUMDB=sum.golang.org
-  mod: mod
-
-# ----------------------------------------------------------------------------------------------------------------------
-
 signs:
   - artifacts: checksum
     signature: '/signatures/{{ base .Env.artifact }}.sig'
