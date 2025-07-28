@@ -48,71 +48,71 @@ Letshare is built for anyone who wants to share files fast, hassle-free, and loc
   ### Debian/Ubuntu (amd64)
   ```bash
   # Download the .deb file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.deb
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_amd64.deb
   # Install the package with automatic dependency resolution
-  sudo apt install ./letshare_1.0.0_linux_amd64.deb
+  sudo apt install ./letshare_1.0.1_linux_amd64.deb
   ```
   
   ### Debian/Ubuntu (arm64)
   ```bash
   # Download the .deb file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.deb
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_arm64.deb
   # Install the package with automatic dependency resolution
-  sudo apt install ./letshare_1.0.0_linux_arm64.deb
+  sudo apt install ./letshare_1.0.1_linux_arm64.deb
   ```
   
   ### Red Hat/Fedora/CentOS (amd64)
   ```bash
   # Download the .rpm file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.rpm
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_amd64.rpm
   # Install the package with automatic dependency resolution
-  sudo dnf install letshare_1.0.0_linux_amd64.rpm  # Fedora/RHEL 8+
+  sudo dnf install letshare_1.0.1_linux_amd64.rpm  # Fedora/RHEL 8+
   # or
-  sudo yum install letshare_1.0.0_linux_amd64.rpm  # CentOS/RHEL 7
+  sudo yum install letshare_1.0.1_linux_amd64.rpm  # CentOS/RHEL 7
   ```
   
   ### Red Hat/Fedora/CentOS (arm64)
   ```bash
   # Download the .rpm file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.rpm
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_arm64.rpm
   # Install the package with automatic dependency resolution
-  sudo dnf install letshare_1.0.0_linux_arm64.rpm  # Fedora/RHEL 8+
+  sudo dnf install letshare_1.0.1_linux_arm64.rpm  # Fedora/RHEL 8+
   # or
-  sudo yum install letshare_1.0.0_linux_arm64.rpm  # CentOS/RHEL 7
+  sudo yum install letshare_1.0.1_linux_arm64.rpm  # CentOS/RHEL 7
   ```
   
   ### Alpine Linux (amd64)
   ```bash
   # Download the .apk file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.apk
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_amd64.apk
   # Install dependencies first, then the package
   sudo apk add avahi avahi-tools
-  sudo apk add --allow-untrusted letshare_1.0.0_linux_amd64.apk
+  sudo apk add --allow-untrusted letshare_1.0.1_linux_amd64.apk
   ```
   
   ### Alpine Linux (arm64)
   ```bash
   # Download the .apk file from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.apk
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_arm64.apk
   # Install dependencies first, then the package
   sudo apk add avahi avahi-tools
-  sudo apk add --allow-untrusted letshare_1.0.0_linux_arm64.apk
+  sudo apk add --allow-untrusted letshare_1.0.1_linux_arm64.apk
   ```
   
   ### Arch Linux (amd64)
   ```bash
   # Download the package from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_amd64.pkg.tar.zst
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_amd64.pkg.tar.zst
   # Install the package with automatic dependency resolution
-  sudo pacman -U letshare_1.0.0_linux_amd64.pkg.tar.zst
+  sudo pacman -U letshare_1.0.1_linux_amd64.pkg.tar.zst
   ```
   
   ### Arch Linux (arm64)
   ```bash
   # Download the package from releases
-  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.0_linux_arm64.pkg.tar.zst
+  wget https://github.com/MuhamedUsman/letshare/releases/latest/download/letshare_1.0.1_linux_arm64.pkg.tar.zst
   # Install the package with automatic dependency resolution
-  sudo pacman -U letshare_1.0.0_linux_arm64.pkg.tar.zst
+  sudo pacman -U letshare_1.0.1_linux_arm64.pkg.tar.zst
   ```
 
   ### Manual Binary Installation (All Distributions)
@@ -243,7 +243,7 @@ So, if you do find a solution where user don't have to write `sudo` each time th
 I've done my best to build this project thoughtfully, but there's always room for improvement. Your contributions play a vital role in helping it grow and get better.
 
 Feel free to contribute by [submitting an issue](https://github.com/MuhamedUsman/letshare/issues/new), suggesting ideas, or opening a pull request.
-Feedback and contributions are always welcome and appreciated!
+Feedback and contributions are always welcomed and appreciated!
 
 ## License
 This product is distributed under [MIT license](https://github.com/MuhamedUsman/letshare/blob/main/LICENSE).<br>
