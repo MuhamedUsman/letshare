@@ -22,17 +22,12 @@ builds:
     goarch:
       - amd64
       - arm64
-    hooks:
-      pre:
-        # this hook runs after each build, but this hacks work, running this as global before hook
-        # gives an error, because the dist dir is not clean, so it raises run it with clean flag
-        - mkdir -p dist/signatures
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 signs:
   - artifacts: checksum
-    signature: '/signatures/{{ base .Env.artifact }}.sig'
+    signature: '{{ base .Env.artifact }}.sig'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
