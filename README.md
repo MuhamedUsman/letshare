@@ -241,6 +241,13 @@ So, if you do find a solution where user don't have to write `sudo` each time th
 
 If you're wondering about tab-less terminal window, its because I've toggled focus mode in windows terminal.
 
+## Technologies Used
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+- [Bubbles](https://github.com/charmbracelet/bubbles)
+- [Lipgloss](https://github.com/charmbracelet/lipgloss)
+  
+for more info see [`go.mod`](https://github.com/MuhamedUsman/letshare/blob/main/go.mod)
+
 ## Feedback and Contributions
 I've done my best to build this project thoughtfully, but there's always room for improvement. Your contributions play a vital role in helping it grow and get better.
 
