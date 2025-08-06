@@ -1,7 +1,8 @@
 <br><div align="center">
-  <img width="360" src="https://github.com/user-attachments/assets/9c3e3a63-4066-4099-be76-b2fe3139dc2b" alt="Letshare Logo"/><br><br>
+  <img width="460" src="https://github.com/user-attachments/assets/9c3e3a63-4066-4099-be76-b2fe3139dc2b" alt="Letshare Logo"/><br><br>
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/badge/OS-linux%2C%20windows%2C%20macOS-0078D4" alt="OS"></a>
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/github/v/release/MuhamedUsman/letshare" alt="Latest Release"></a>
+  <img class="badge" tag="github.com/MuhamedUsman/letshare" src="https://goreportcard.com/badge/github.com/MuhamedUsman/letshare">
   <a href="https://github.com/MuhamedUsman/letshare/releases"><img src="https://img.shields.io/github/downloads/MuhamedUsman/letshare/total" alt="downloads"></a>
 </div><br>
 
